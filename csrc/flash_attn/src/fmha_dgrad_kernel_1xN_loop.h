@@ -110,7 +110,7 @@ inline __device__ void compute_dot_do_o(const Params &params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_first, bool Is_last, bool Seq_parallel=false, typename Params, typename Prng>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool has_attn_mask, bool has_attn_bias, bool Is_first, bool Is_last, bool Seq_parallel=false, typename Params, typename Prng>
 inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng &ph,
                                                      const int loop_step_idx) {
 
@@ -230,6 +230,19 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
+    // Allocate the global memory tile loader for mask.
+    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+    // conctructor
+    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
+
+    // Allocate the global memory tile loader for bias.
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+    using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
+
+    // conctructor
+    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
+
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 
     // Allocate the global memory tile loader for K.
@@ -299,6 +312,15 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // TODO: need to move gmem_s if we want the intermediate result for debugging
     gmem_softmax_lse.move(begin);
     gmem_softmax_d.move(begin);
+
+    if constexpr (has_attn_mask) {
+        gmem_mask.move(begin);
+    }
+
+    if constexpr (has_attn_bias) {
+        gmem_bias.move(begin);
+        gmem_ds.move(begin);
+    }
 
     if (!Is_first) {
         gmem_k.move(loop_step_idx);
@@ -426,6 +448,27 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
+
+        if constexpr (has_attn_mask) {
+            using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+            Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
+            gmem_mask.move();
+
+            // Apply the attn mask.
+            softmax.apply_attn_mask(frag_mask);
+        }
+
+        if constexpr (has_attn_bias) {
+            using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
+            Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
+            gmem_bias.move();
+
+            // Apply the attn mask.
+            softmax.apply_attn_bias(frag_bias, l);
+        }
+
         // Apply the mask.
         softmax.apply_mask(mask);
         // Scale by log-sum-exp of the softmax
@@ -538,6 +581,11 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         }
 
         softmax.template pack<elem_type>(frag_p);
+
+        if constexpr (has_attn_bias) {
+            gmem_ds.template store<elem_type>(softmax.elt_);
+            gmem_ds.move();
+        }
 
         // Store dp to smem for transpose
         smem_dp.store(frag_p);
@@ -783,7 +831,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
 // loop_steps = -1 means the number of steps will be params.seqlen_k / Kernel_traits::Cta_tile_p::N.
 // This template parameter is there so we can specialize with loop_steps == 1 and loop_steps == 2.
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, int loop_steps=-1, typename Params>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Need_attn_mask, bool Need_attn_bias, int loop_steps=-1, typename Params>
 inline __device__ void compute_dq_dk_dv_1xN(const Params &params) {
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
 
@@ -798,27 +846,27 @@ inline __device__ void compute_dq_dk_dv_1xN(const Params &params) {
     Philox ph(std::get<0>(seeds), 0, std::get<1>(seeds) + (bidb * params.h + bidh) * 32 + tidx % 32);
 
     if (loop_steps == 1) {
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, true>(params, ph, 0);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, true>(params, ph, 0);
     } else if (loop_steps == 2) {
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, false>(params, ph, 0);
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, true>(params, ph, 1);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, false>(params, ph, 0);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, true>(params, ph, 1);
     } else {
         if (params.seqlen_k == blocksize_c) {
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, true>(params, ph, 0);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, true>(params, ph, 0);
         } else {
             const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, false>(params, ph, 0);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, false>(params, ph, 0);
             for (int loop_step_idx = 1; loop_step_idx < max_loop_steps - 1; loop_step_idx++) {
-                compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, false>(params, ph, loop_step_idx);
+                compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, false>(params, ph, loop_step_idx);
             }
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, true>(params, ph, max_loop_steps - 1);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, true>(params, ph, max_loop_steps - 1);
         }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, typename Params>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Need_attn_mask, bool Need_attn_bias, typename Params>
 inline __device__ void compute_dq_dk_dv_seqparallel(const Params &params) {
     // The block index for the batch.
     const int bidb = blockIdx.x;
@@ -831,7 +879,7 @@ inline __device__ void compute_dq_dk_dv_seqparallel(const Params &params) {
     Philox ph(std::get<0>(seeds), 0, std::get<1>(seeds) + (bidb * params.h + bidh) * 32 + tidx % 32);
 
     int loop_step_idx = blockIdx.z;
-    compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, false, /*Seq_parallel=*/true>(params, ph, loop_step_idx);
+    compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, false, /*Seq_parallel=*/true>(params, ph, loop_step_idx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

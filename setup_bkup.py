@@ -119,8 +119,12 @@ ext_modules.append(
         name="flash_attn_cuda",
         sources=[
             "csrc/flash_attn/fmha_api.cpp",
-            "csrc/flash_attn/src/fmha_fprop_fp16_kernel.sm80.cu",
-            "csrc/flash_attn/src/fmha_dgrad_fp16_kernel_loop.sm80.cu",
+            "csrc/flash_attn/src/fmha_fwd_hdim32.cu",
+            "csrc/flash_attn/src/fmha_fwd_hdim64.cu",
+            "csrc/flash_attn/src/fmha_fwd_hdim128.cu",
+            "csrc/flash_attn/src/fmha_bwd_hdim32.cu",
+            "csrc/flash_attn/src/fmha_bwd_hdim64.cu",
+            "csrc/flash_attn/src/fmha_bwd_hdim128.cu",
             "csrc/flash_attn/src/fmha_block_fprop_fp16_kernel.sm80.cu",
             "csrc/flash_attn/src/fmha_block_dgrad_fp16_kernel_loop.sm80.cu",
         ],
@@ -150,108 +154,9 @@ ext_modules.append(
     )
 )
 
-# layer_norm
-sub_dir = Path(this_dir) / 'csrc' / 'layer_norm'
-ext_modules.append(
-    CUDAExtension(
-        name="dropout_layer_norm",
-        sources=[
-            str(sub_dir / "ln_api.cpp"),
-            str(sub_dir / "ln_fwd_cuda_kernel.cu"),
-            str(sub_dir / "ln_bwd_semi_cuda_kernel.cu"),
-        ],
-        extra_compile_args={
-            "cxx": ["-O3"] + generator_flag,
-            "nvcc": append_nvcc_threads(
-                [
-                    "-O3",
-                    "-U__CUDA_NO_HALF_OPERATORS__",
-                    "-U__CUDA_NO_HALF_CONVERSIONS__",
-                    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
-                    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-                    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
-                    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-                    "--expt-relaxed-constexpr",
-                    "--expt-extended-lambda",
-                    "--use_fast_math",
-                ]
-                + generator_flag
-                + cc_flag
-            ),
-        },
-        include_dirs=[sub_dir],
-    )
-)
-
-# fused_softmax
-sub_dir = Path(this_dir) / 'csrc' / 'fused_softmax'
-ext_modules.append(
-    CUDAExtension(
-            name='fused_softmax_lib',
-            sources=[str(sub_dir / 'fused_softmax.cpp'),
-                     str(sub_dir / 'scaled_masked_softmax_cuda.cu'),
-                     str(sub_dir / 'scaled_upper_triang_masked_softmax_cuda.cu')],
-            extra_compile_args={
-                               'cxx': ['-O3',],
-                               'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
-                               },
-            include_dirs=[sub_dir],
-            )
-)
-
-# fused_dense_lib
-sub_dir = Path(this_dir) / 'csrc' / 'fused_dense_lib'
-ext_modules.append(
-        CUDAExtension(
-            name='fused_dense_lib',
-            sources=[str(sub_dir / 'fused_dense.cpp'), str(sub_dir / 'fused_dense_cuda.cu')],
-            extra_compile_args={
-                               'cxx': ['-O3',],
-                               'nvcc': append_nvcc_threads(['-O3'])
-                               },
-            include_dirs=[sub_dir],)
-)
-
-# rotary
-sub_dir = Path(this_dir) / 'csrc' / 'rotary'
-ext_modules.append(
-    CUDAExtension(
-        'rotary_emb', [
-            str(sub_dir / 'rotary.cpp'),
-            str(sub_dir / 'rotary_cuda.cu'),
-        ],
-        extra_compile_args={'cxx': ['-g', '-march=native', '-funroll-loops'],
-                            'nvcc': append_nvcc_threads([
-                                '-O3', '--use_fast_math', '--expt-extended-lambda'
-                            ] + cc_flag)
-                           },
-        include_dirs=[sub_dir],)
-)
-
-# xentopy
-sub_dir = Path(this_dir) / 'csrc' / 'xentropy'
-ext_modules.append(
-    CUDAExtension(
-        name="xentropy_cuda_lib",
-        sources=[
-            str(sub_dir / "interface.cpp"),
-            str(sub_dir / "xentropy_kernel.cu")
-        ],
-        extra_compile_args={
-            "cxx": ["-O3"] + generator_flag,
-            "nvcc": append_nvcc_threads(
-                ["-O3"]
-                + generator_flag
-                + cc_flag
-            ),
-        },
-        include_dirs=[sub_dir],
-    )
-)
-
 setup(
     name="flash_attn",
-    version="0.2.1",
+    version="0.2.6-1",
     packages=find_packages(
         exclude=("build", "csrc", "include", "tests", "dist", "docs", "benchmarks", "flash_attn.egg-info",)
     ),

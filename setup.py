@@ -108,8 +108,10 @@ cc_flag = []
 _, bare_metal_major, _ = get_cuda_bare_metal_version(CUDA_HOME)
 if int(bare_metal_major) < 11:
     raise RuntimeError("FlashAttention is only supported on CUDA 11")
-cc_flag.append("-gencode")
-cc_flag.append("arch=compute_75,code=sm_75")
+# cc_flag.append("-gencode")
+# cc_flag.append("arch=compute_70,code=sm_70")
+# cc_flag.append("-gencode")
+# cc_flag.append("arch=compute_75,code=sm_75")
 cc_flag.append("-gencode")
 cc_flag.append("arch=compute_80,code=sm_80")
 
@@ -151,6 +153,127 @@ ext_modules.append(
             Path(this_dir) / 'csrc' / 'flash_attn' / 'src',
             Path(this_dir) / 'csrc' / 'flash_attn' / 'cutlass' / 'include',
         ],
+    )
+)
+
+# layer_norm
+sub_dir = Path(this_dir) / 'csrc' / 'layer_norm'
+ext_modules.append(
+    CUDAExtension(
+        name="dropout_layer_norm",
+        sources=[
+            str(sub_dir / "ln_api.cpp"),
+            str(sub_dir / "ln_fwd_256.cu"),
+            str(sub_dir / "ln_bwd_256.cu"),
+            str(sub_dir / "ln_fwd_512.cu"),
+            str(sub_dir / "ln_bwd_512.cu"),
+            str(sub_dir / "ln_fwd_768.cu"),
+            str(sub_dir / "ln_bwd_768.cu"),
+            str(sub_dir / "ln_fwd_1024.cu"),
+            str(sub_dir / "ln_bwd_1024.cu"),
+            str(sub_dir / "ln_fwd_1280.cu"),
+            str(sub_dir / "ln_bwd_1280.cu"),
+            str(sub_dir / "ln_fwd_1536.cu"),
+            str(sub_dir / "ln_bwd_1536.cu"),
+            str(sub_dir / "ln_fwd_2048.cu"),
+            str(sub_dir / "ln_bwd_2048.cu"),
+            str(sub_dir / "ln_fwd_2560.cu"),
+            str(sub_dir / "ln_bwd_2560.cu"),
+            str(sub_dir / "ln_fwd_3072.cu"),
+            str(sub_dir / "ln_bwd_3072.cu"),
+            str(sub_dir / "ln_fwd_4096.cu"),
+            str(sub_dir / "ln_bwd_4096.cu"),
+            str(sub_dir / "ln_fwd_5120.cu"),
+            str(sub_dir / "ln_bwd_5120.cu"),
+            str(sub_dir / "ln_fwd_6144.cu"),
+            str(sub_dir / "ln_bwd_6144.cu"),
+        ],
+        extra_compile_args={
+            "cxx": ["-O3"] + generator_flag,
+            "nvcc": append_nvcc_threads(
+                [
+                    "-O3",
+                    "-U__CUDA_NO_HALF_OPERATORS__",
+                    "-U__CUDA_NO_HALF_CONVERSIONS__",
+                    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
+                    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+                    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
+                    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
+                    "--expt-relaxed-constexpr",
+                    "--expt-extended-lambda",
+                    "--use_fast_math",
+                ]
+                + generator_flag
+                + cc_flag
+            ),
+        },
+        include_dirs=[sub_dir],
+    )
+)
+
+# fused_softmax
+sub_dir = Path(this_dir) / 'csrc' / 'fused_softmax'
+ext_modules.append(
+    CUDAExtension(
+            name='fused_softmax_lib',
+            sources=[str(sub_dir / 'fused_softmax.cpp'),
+                     str(sub_dir / 'scaled_masked_softmax_cuda.cu'),
+                     str(sub_dir / 'scaled_upper_triang_masked_softmax_cuda.cu')],
+            extra_compile_args={
+                               'cxx': ['-O3',],
+                               'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + cc_flag)
+                               },
+            include_dirs=[sub_dir],
+            )
+)
+
+# fused_dense_lib
+sub_dir = Path(this_dir) / 'csrc' / 'fused_dense_lib'
+ext_modules.append(
+        CUDAExtension(
+            name='fused_dense_lib',
+            sources=[str(sub_dir / 'fused_dense.cpp'), str(sub_dir / 'fused_dense_cuda.cu')],
+            extra_compile_args={
+                               'cxx': ['-O3',],
+                               'nvcc': append_nvcc_threads(['-O3'])
+                               },
+            include_dirs=[sub_dir],)
+)
+
+# rotary
+sub_dir = Path(this_dir) / 'csrc' / 'rotary'
+ext_modules.append(
+    CUDAExtension(
+        'rotary_emb', [
+            str(sub_dir / 'rotary.cpp'),
+            str(sub_dir / 'rotary_cuda.cu'),
+        ],
+        extra_compile_args={'cxx': ['-g', '-march=native', '-funroll-loops'],
+                            'nvcc': append_nvcc_threads([
+                                '-O3', '--use_fast_math', '--expt-extended-lambda'
+                            ] + cc_flag)
+                           },
+        include_dirs=[sub_dir],)
+)
+
+# xentopy
+sub_dir = Path(this_dir) / 'csrc' / 'xentropy'
+ext_modules.append(
+    CUDAExtension(
+        name="xentropy_cuda_lib",
+        sources=[
+            str(sub_dir / "interface.cpp"),
+            str(sub_dir / "xentropy_kernel.cu")
+        ],
+        extra_compile_args={
+            "cxx": ["-O3"] + generator_flag,
+            "nvcc": append_nvcc_threads(
+                ["-O3"]
+                + generator_flag
+                + cc_flag
+            ),
+        },
+        include_dirs=[sub_dir],
     )
 )
 
