@@ -11,7 +11,7 @@ void run_fmha_bwd_hdim64(FMHA_dgrad_params &params, cudaStream_t stream, const b
             using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 8, 0x08u, elem_type>;
             run_fmha_bwd_loop<Kernel_traits>(params, stream, configure);
         } else if (params.seqlen_k >= 256) {
-            if (dprops->major == 8 && dprops->minor == 0) {
+            if ((dprops->major == 8 && dprops->minor == 0) || (dprops->major == 9 && dprops->minor == 0)) {
                 // Don't share smem for K & V, and don't keep V in registers
                 // This speeds things up by 2-3% by avoiding register spills, but it
                 // uses more shared memory, which is fine on A100 but not other GPUs.
