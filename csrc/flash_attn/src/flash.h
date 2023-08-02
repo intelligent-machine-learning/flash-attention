@@ -96,6 +96,10 @@ struct Flash_fwd_params : public Qkv_params {
 
     bool is_bf16;
     bool is_causal;
+
+    // glm mask
+    bool is_glm_causal;
+    int * __restrict__ glm_mask;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

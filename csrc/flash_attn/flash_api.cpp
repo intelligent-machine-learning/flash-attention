@@ -36,7 +36,8 @@ void set_params_fprop(Flash_fwd_params &params,
                       void *softmax_lse_d,
                       float p_dropout,
                       float softmax_scale,
-                      bool is_causal) {
+                      bool is_causal,
+                      void *glm_mask_d) {
 
     // Reset the parameters
     memset(&params, 0, sizeof(params));
@@ -102,6 +103,8 @@ void set_params_fprop(Flash_fwd_params &params,
     TORCH_CHECK(p_dropout < 1.f);
 
     params.is_causal = is_causal;
+    params.is_glm_causal = ! (glm_mask_d == nullptr);
+    params.glm_mask = static_cast<int *>(glm_mask_d);
 }
 
 void set_params_dgrad(Flash_bwd_params &params,
@@ -133,7 +136,8 @@ void set_params_dgrad(Flash_bwd_params &params,
                       void *dsoftmax_sum_d,
                       float p_dropout,
                       float softmax_scale,
-                      bool is_causal) {
+                      bool is_causal,
+                      void *glm_mask_d) {
 
     set_params_fprop(params,
                      b, seqlen_q, seqlen_k, seqlen_q_rounded, seqlen_k_rounded, h, h_k, d, d_rounded,
@@ -144,7 +148,8 @@ void set_params_dgrad(Flash_bwd_params &params,
                      softmax_lse_d,
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     glm_mask_d);
 
     // Set the pointers and strides.
     params.do_ptr = dout.data_ptr();
@@ -192,7 +197,9 @@ mha_fwd(const at::Tensor &q,         // batch_size x seqlen_q x num_heads x head
         const float softmax_scale,
         const bool is_causal,
         const bool return_softmax,
-        c10::optional<at::Generator> gen_) {
+        c10::optional<at::Generator> gen_,
+        const c10::optional<at::Tensor> &glm_mask  // batch_size
+        ) {
 
     auto dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
@@ -278,6 +285,15 @@ mha_fwd(const at::Tensor &q,         // batch_size x seqlen_q x num_heads x head
         p = torch::empty({ batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded }, opts);
     }
 
+    // glm_mask support
+    if (glm_mask.has_value()) {
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.value().dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.value().is_cuda(), "Input tensor must be on CUDA device");
+        TORCH_CHECK(glm_mask.value().is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask.value(), batch_size);
+    }
+
     Flash_fwd_params params;
     set_params_fprop(params,
                      batch_size,
@@ -292,7 +308,8 @@ mha_fwd(const at::Tensor &q,         // batch_size x seqlen_q x num_heads x head
                      softmax_lse.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     glm_mask.has_value() ? glm_mask->data_ptr() : nullptr);
 
     // number of times random will be generated per thread, to offset philox counter in thc random
     // state
@@ -337,7 +354,9 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                const bool zero_tensors,
                const bool is_causal,
                const bool return_softmax,
-               c10::optional<at::Generator> gen_) {
+               c10::optional<at::Generator> gen_,
+               const c10::optional<at::Tensor> &glm_mask  // batch_size
+               ) {
 
     auto dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
@@ -437,6 +456,15 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
         if (return_softmax) {p.zero_();}
     }
 
+    // glm_mask support
+    if (glm_mask.has_value()) {
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.value().dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.value().is_cuda(), "Input tensor must be on CUDA device");
+        TORCH_CHECK(glm_mask.value().is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask.value(), batch_size);
+    }
+
     Flash_fwd_params params;
     set_params_fprop(params,
                      batch_size,
@@ -451,7 +479,8 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                      softmax_lse.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     glm_mask.has_value() ? glm_mask->data_ptr() : nullptr);
 
     // number of times random will be generated per thread, to offset philox counter in thc random
     // state
@@ -518,6 +547,7 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
         const float softmax_scale,
         const bool is_causal,
         c10::optional<at::Generator> gen_,
+        const c10::optional<at::Tensor> &glm_mask,  // batch_size
         c10::optional<at::Tensor> &rng_state) {
     auto dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
@@ -648,6 +678,15 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
         dv_expanded = dv;
     }
 
+    // glm_mask support
+    if (glm_mask.has_value()) {
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.value().dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.value().is_cuda(), "Input tensor must be on CUDA device");
+        TORCH_CHECK(glm_mask.value().is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask.value(), batch_size);
+    }
+
     Flash_bwd_params params;
 
     set_params_dgrad(params,
@@ -669,7 +708,8 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
                      softmax_d.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     glm_mask.has_value() ? glm_mask->data_ptr() : nullptr);
 
     auto launch = &run_mha_bwd;
     // launch(params, stream, /*configure=*/true);
@@ -726,6 +766,7 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                const bool zero_tensors,
                const bool is_causal,
                c10::optional<at::Generator> gen_,
+               const c10::optional<at::Tensor> &glm_mask,  // batch_size
                c10::optional<at::Tensor> &rng_state
 ) {
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -868,6 +909,16 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
         softmax_d.zero_();
     }
 
+
+    // glm_mask support
+    if (glm_mask.has_value()) {
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.value().dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.value().is_cuda(), "Input tensor must be on CUDA device");
+        TORCH_CHECK(glm_mask.value().is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask.value(), batch_size);
+    }
+
     Flash_bwd_params params;
 
     set_params_dgrad(params,
@@ -887,7 +938,8 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      softmax_d.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     glm_mask.has_value() ? glm_mask->data_ptr() : nullptr);
 
     auto launch = &run_mha_bwd;
     // launch(params, stream, /*configure=*/true);

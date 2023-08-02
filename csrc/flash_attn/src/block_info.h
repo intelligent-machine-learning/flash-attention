@@ -17,6 +17,7 @@ struct BlockInfo {
         , sum_s_k(!Varlen || params.cu_seqlens_k == nullptr ? -1 : params.cu_seqlens_k[bidb])
         , actual_seqlen_q(!Varlen || params.cu_seqlens_q == nullptr ? params.seqlen_q : params.cu_seqlens_q[bidb + 1] - sum_s_q)
         , actual_seqlen_k(!Varlen || params.cu_seqlens_k == nullptr ? params.seqlen_k : params.cu_seqlens_k[bidb + 1] - sum_s_k)
+        , break_point(params.is_glm_causal ? params.glm_mask[bidb] : 0)
         {
         }
 
@@ -34,6 +35,7 @@ struct BlockInfo {
     const int sum_s_k;
     const uint32_t actual_seqlen_q;
     const uint32_t actual_seqlen_k;
+    const int break_point;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

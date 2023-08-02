@@ -638,7 +638,13 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.d_rounded;
 
     int m_block = m_block_max - 1;
-    int m_block_min = !Is_causal ? 0 : (n_block * kBlockN) / kBlockM;
+    int m_block_min = 0;
+    if (Is_causal) {
+        m_block_min = (n_block * kBlockN) / kBlockM;
+        if (params.is_glm_causal) {
+            m_block_min = binfo.break_point > n_block * kBlockN ? 0 : m_block_min;
+        }
+    }
 
     // We might need to exit early and write 0 to dK and dV.
     // Otherwise we get wrong result for the case where we don't enter the for loop.
@@ -801,7 +807,7 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
                 flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                          binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
-                                         AtomLayoutMS * 16);
+                                         AtomLayoutMS * 16, binfo.break_point);
             }
         }
         // if (cute::thread(32, 0)) { print(scores); }
@@ -1333,7 +1339,7 @@ inline __device__ void compute_dq_dk_dv_1rowblock(const Params &params, const in
             flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                      binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                      // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
-                                     AtomLayoutMS * 16);
+                                     AtomLayoutMS * 16, binfo.break_point);
         }
         // Compute the exponential value.
         flash::scale_apply_exp2</*scale_max=*/false>(scores, lse, params.scale_softmax_log2);
