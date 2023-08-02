@@ -116,6 +116,9 @@ struct Flash_fwd_params : public Qkv_params {
     bool is_seqlens_k_cumulative;
 
     int num_splits;  // For split-KV version
+    // glm mask
+    bool is_glm_causal;
+    int * __restrict__ glm_mask;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

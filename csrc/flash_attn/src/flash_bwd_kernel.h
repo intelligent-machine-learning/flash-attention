@@ -654,14 +654,50 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.d_rounded;
 
     int m_block = m_block_max - 1;
-    int m_block_min = !Is_causal ? 0 : std::max(0, (n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k) / kBlockM);
-    // We're guaranteed that m_block_min <= m_block:
-    // We checked earlier that n_block * kBlockN < actual_seqlen_k, so in the causal case,
-    // n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k < actual_seqlen_q.
-    // So m_block_min <= (actual_seqlen_q - 1) / kBlockM.
-    // Recall that m_block_max = cute::ceil_div(binfo.actual_seqlen_q, kBlockM) = (actual_seqlen_q + kBlockM - 1) / kBlockM.
-    // So m_block_m - 1 = (actual_seqlen_q - 1) / kBlockM.
-    // We conclude that m_block_min <= m_block, so we will always have at least 1 iteration of the for loop.
+    int m_block_min = 0;
+    if (Is_causal) {
+        m_block_min = std::max(0, (n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k) / kBlockM);
+        if (params.is_glm_causal) {
+            m_block_min = binfo.break_point > n_block * kBlockN ? 0 : m_block_min;
+        }
+    }
+
+    // We might need to exit early and write 0 to dK and dV.
+    // Otherwise we get wrong result for the case where we don't enter the for loop.
+    // And we might read OOB elements from gQ and gdO.
+    // TODO: what if we're not parallelizing, do we need to compute dot_do_o?
+    if (Is_causal && m_block < m_block_min) {
+        const index_t row_offset_dk = binfo.k_offset(params.dk_batch_stride, params.dk_row_stride, bidb)
+          + n_block * kBlockN * params.dk_row_stride + bidh * params.dk_head_stride;
+        const index_t row_offset_dv = binfo.k_offset(params.dv_batch_stride, params.dv_row_stride, bidb)
+          + n_block * kBlockN * params.dv_row_stride + bidh * params.dv_head_stride;
+        Tensor gdK = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(params.dk_ptr) + row_offset_dk),
+                                 Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                                 make_stride(params.dk_row_stride, _1{}));
+        Tensor gdV = make_tensor(make_gmem_ptr(reinterpret_cast<Element *>(params.dv_ptr) + row_offset_dv),
+                                 Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                                 make_stride(params.dv_row_stride, _1{}));
+        auto gmem_thr_copy_dKV = typename Kernel_traits::GmemTiledCopydKV{}.get_thread_slice(tidx);
+        Tensor tdKgdK = gmem_thr_copy_dKV.partition_D(gdK);
+        Tensor tdVgdV = gmem_thr_copy_dKV.partition_D(gdV);
+        Tensor tdKrdK = make_tensor<Element>(shape(tdKgdK));
+        Tensor tdVrdV = make_tensor<Element>(shape(tdVgdV));
+        clear(tdKrdK);
+        clear(tdVrdV);
+        Tensor cdKV = make_identity_tensor(make_shape(size<0>(gdK), size<1>(gdK)));    // (BLK_N,BLK_K) -> (blk_n,blk_k)
+        Tensor tdKVcdKV = gmem_thr_copy_dKV.partition_D(cdKV);
+        Tensor tdKVpdKV = make_tensor<bool>(make_shape(size<2>(tdKgdK)));
+        #pragma unroll
+        for (int k = 0; k < size(tdKVpdKV); ++k) { tdKVpdKV(k) = get<1>(tdKVcdKV(0, 0, k)) < params.d; }
+        // Clear_OOB_K must be false since we don't want to write zeros to gmem
+        flash::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
+            gmem_thr_copy_dKV, tdKrdK, tdKgdK, tdKVcdKV, tdKVpdKV, binfo.actual_seqlen_k - n_block * kBlockN
+        );
+        flash::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
+            gmem_thr_copy_dKV, tdVrdV, tdVgdV, tdKVcdKV, tdKVpdKV, binfo.actual_seqlen_k - n_block * kBlockN
+        );
+        return;
+    }
 
     if (Double_buffer && m_block % 2 == 1) {  // Double buffer for sQ
         tQsQ.data() = tQsQ.data() + size(sQ);
@@ -792,7 +828,7 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
                                          binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                          binfo.actual_seqlen_q,
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
-                                         AtomLayoutMS * 16);
+                                         AtomLayoutMS * 16, binfo.break_point);
             }
         }
         // if (cute::thread(32, 0)) { print(scores); }
@@ -1338,7 +1374,7 @@ inline __device__ void compute_dq_dk_dv_1rowblock(const Params &params, const in
                                      binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                      // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
                                      binfo.actual_seqlen_q,
-                                     AtomLayoutMS * 16);
+                                     AtomLayoutMS * 16, binfo.break_point);
         }
         // Compute the exponential value.
         flash::scale_apply_exp2</*scale_max=*/false>(scores, lse, params.scale_softmax_log2);
