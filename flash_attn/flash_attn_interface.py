@@ -840,3 +840,8 @@ def flash_attn_with_kvcache(
         q, k_cache, v_cache, k, v, cache_seqlens, None, softmax_scale, causal, num_splits
     )
     return out
+
+# alias for compat
+flash_attn_unpadded_func = flash_attn_varlen_func
+flash_attn_unpadded_qkvpacked_func = flash_attn_varlen_qkvpacked_func
+flash_attn_unpadded_kvpacked_func = flash_attn_varlen_kvpacked_func
