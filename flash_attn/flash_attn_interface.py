@@ -496,3 +496,8 @@ def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, ma
         q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
         dropout_p, softmax_scale, causal, return_attn_probs, glm_mask
     )
+
+# alias for compat
+flash_attn_unpadded_func = flash_attn_varlen_func
+flash_attn_unpadded_qkvpacked_func = flash_attn_varlen_qkvpacked_func
+flash_attn_unpadded_kvpacked_func = flash_attn_varlen_kvpacked_func
