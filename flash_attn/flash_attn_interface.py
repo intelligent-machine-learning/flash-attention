@@ -49,6 +49,45 @@ def _flash_attn_backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens
     return dq, dk, dv, softmax_d, dbias
 
 
+def _l2attn_forward(q, k, v, out, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
+                        dropout_p, softmax_scale, causal, return_softmax, num_splits=0,
+                        generator=None, attn_mask=None, attn_bias=None):
+    """
+    num_splits: how much to parallelize over the seqlen_q dimension. num_splits=0 means
+    it will be set by an internal heuristic. We're exposing num_splits mostly for benchmarking.
+    Don't change it unless you know what you're doing.
+    """
+    softmax_lse, *rest = flash_attn_cuda.l2attn_fwd(
+        q, k, v, out, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, dropout_p,
+        softmax_scale, False, causal, return_softmax, num_splits, generator, attn_mask, attn_bias
+    )
+    # if out.isnan().any() or softmax_lse.isnan().any():
+    #     breakpoint()
+    S_dmask = rest[0] if return_softmax else None
+    return out, softmax_lse, S_dmask
+
+
+def _l2attn_backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k,
+                         max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, causal, num_splits=0,
+                         generator=None, attn_mask=None, attn_bias=None):
+    """
+    num_splits: whether to parallelize over the seqlen_k dimension (num_splits > 1) or
+    not (num_splits = 1). num_splits=0 means it will be set by an internal heuristic.
+    Any value above 1 will call the same kernel (i.e. num_splits=2 would call the same kernel
+    as num_splits=3), so effectively the choices are 0, 1, and 2.
+    This hyperparameter can be tuned for performance, but default value (heuristic) should work fine.
+    """
+    dout = dout.contiguous()  # CUDA code assumes that dout is contiguous
+    softmax_d, *rest = flash_attn_cuda.l2attn_bwd(
+        dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k,
+        max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, False, causal, num_splits, generator,
+        attn_mask, attn_bias)
+    # if dk.isnan().any() or dk.isnan().any() or dv.isnan().any() or softmax_d.isnan().any():
+    #     breakpoint()
+    dbias = None if attn_bias is None else rest[0]
+    return dq, dk, dv, softmax_d, dbias
+
+
 class FlashAttnQKVPackedFunc(torch.autograd.Function):
 
     @staticmethod
@@ -78,6 +117,45 @@ class FlashAttnQKVPackedFunc(torch.autograd.Function):
             torch.cuda.set_rng_state(rng_state)
         dqkv = torch.empty_like(qkv)
         _, _, _, _, dbias = _flash_attn_backward(
+            dout, qkv[:, 0], qkv[:, 1], qkv[:, 2], out, softmax_lse,
+            dqkv[:, 0], dqkv[:, 1], dqkv[:, 2], cu_seqlens, cu_seqlens,
+            ctx.max_seqlen, ctx.max_seqlen, ctx.dropout_p, ctx.softmax_scale, ctx.causal,
+            attn_mask=attn_mask, attn_bias=attn_bias
+        )
+        if rng_state is not None:
+            torch.cuda.set_rng_state(cur_rng_state)
+        return dqkv, None, None, None, dbias, None, None, None, None
+
+
+class L2AttnQKVPackedFunc(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, qkv, cu_seqlens, max_seqlen, attn_mask, attn_bias,
+                dropout_p, softmax_scale, causal, return_softmax):
+        # Save rng_state because the backward pass will regenerate the dropout mask
+        rng_state = torch.cuda.get_rng_state() if dropout_p > 0 else None
+        if softmax_scale is None:
+            softmax_scale = qkv.shape[-1] ** (-0.5)
+        out, softmax_lse, S_dmask = _l2attn_forward(
+            qkv[:, 0], qkv[:, 1], qkv[:, 2], torch.empty_like(qkv[:, 0]), cu_seqlens, cu_seqlens,
+            max_seqlen, max_seqlen, dropout_p, softmax_scale, causal=causal,
+            return_softmax=return_softmax, attn_mask=attn_mask, attn_bias=attn_bias
+        )
+        ctx.save_for_backward(qkv, out, softmax_lse, cu_seqlens, rng_state, attn_mask, attn_bias)
+        ctx.dropout_p = dropout_p
+        ctx.max_seqlen = max_seqlen
+        ctx.softmax_scale = softmax_scale
+        ctx.causal = causal
+        return out if not return_softmax else (out, softmax_lse, S_dmask)
+
+    @staticmethod
+    def backward(ctx, dout, *args):
+        qkv, out, softmax_lse, cu_seqlens, rng_state, attn_mask, attn_bias = ctx.saved_tensors
+        if rng_state is not None:
+            cur_rng_state = torch.cuda.get_rng_state()
+            torch.cuda.set_rng_state(rng_state)
+        dqkv = torch.empty_like(qkv)
+        _, _, _, _, dbias = _l2attn_backward(
             dout, qkv[:, 0], qkv[:, 1], qkv[:, 2], out, softmax_lse,
             dqkv[:, 0], dqkv[:, 1], dqkv[:, 2], cu_seqlens, cu_seqlens,
             ctx.max_seqlen, ctx.max_seqlen, ctx.dropout_p, ctx.softmax_scale, ctx.causal,
@@ -283,6 +361,36 @@ def flash_attn_unpadded_qkvpacked_func(qkv, cu_seqlens, max_seqlen, dropout_p, s
             pattern (negative means that location was dropped, nonnegative means it was kept).
     """
     return FlashAttnQKVPackedFunc.apply(qkv, cu_seqlens, max_seqlen,
+                                        attn_mask, attn_bias, dropout_p, softmax_scale,
+                                        causal, return_attn_probs)
+
+
+def l2attn_unpadded_qkvpacked_func(qkv, cu_seqlens, max_seqlen, dropout_p, softmax_scale=None,
+                                       causal=False, return_attn_probs=False,
+                                       attn_mask=None, attn_bias=None):
+    """dropout_p should be set to 0.0 during evaluation
+    Arguments:
+        qkv: (total, 3, nheads, headdim), where total = total number of tokens in the batch.
+        cu_seqlens: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+           of the sequences in the batch, used to index into qkv.
+        max_seqlen: int. Maximum sequence length in the batch.
+        dropout_p: float. Dropout probability.
+        softmax_scale: float. The scaling of QK^T before applying softmax.
+            Default to 1 / sqrt(headdim).
+        causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
+        return_attn_probs: bool. Whether to return the attention probabilities. This option is for
+           testing only. The returned probabilities are not guaranteed to be correct
+           (they might not have the right scaling).
+    Return:
+        out: (total, nheads, headdim).
+        softmax_lse [optional, if return_attn_probs=True]: (batch_size, nheads, seqlen). The
+            logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
+            normalization factor).
+        S_dmask [optional, if return_attn_probs=True]: (batch_size, nheads, seqlen, seqlen).
+            The output of softmax (possibly with different scaling). It also encodes the dropout
+            pattern (negative means that location was dropped, nonnegative means it was kept).
+    """
+    return L2AttnQKVPackedFunc.apply(qkv, cu_seqlens, max_seqlen,
                                         attn_mask, attn_bias, dropout_p, softmax_scale,
                                         causal, return_attn_probs)
 

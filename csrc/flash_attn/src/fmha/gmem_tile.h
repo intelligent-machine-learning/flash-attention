@@ -99,6 +99,12 @@ struct Gmem_tile_qkv {
 
     // Store data to shared memory.
     template< typename Smem_tile >
+    inline __device__ void commit_naive(Smem_tile &smem_tile) {
+        smem_tile.store_naive(fetch_);
+    }
+
+    // Store data to shared memory.
+    template< typename Smem_tile >
     inline __device__ void commit(Smem_tile &smem_tile) {
         smem_tile.store(fetch_);
     }

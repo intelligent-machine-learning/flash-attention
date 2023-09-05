@@ -1,0 +1,6 @@
+build_release/
+temp/
+fun.*
+output*
+*log
+test.cu

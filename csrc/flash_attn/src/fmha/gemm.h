@@ -271,6 +271,18 @@ inline __device__ void gemm(Acc (&acc)[M][N], const A (&a)[M], const B (&b)[N]) 
     }
 }
 
+// template<typename elem_type, typename Acc, typename A, typename B, int M, int N>
+// inline __device__ void gemm_cl(Acc (&acc)[M][N], const A (&a)[M], const B (&b)[N]) {
+// 
+//     #pragma unroll
+//     for( int mi = 0; mi < M; ++mi ) {
+//         #pragma unroll
+//         for( int ni = 0; ni < N; ++ni ) {
+//             acc[mi][ni].mma(a[mi], b[ni]);
+//         }
+//     }
+// }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 /// Statically maps half types => cutlass data types
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -387,6 +399,8 @@ inline __device__ void gemm_cl(Acc (&acc)[M][N], const A (&a)[M], const B (&b)[N
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// p:16,128,64,1,8,1
+// o:16,64,128,1,1,8
 template<
     // The number of rows in the CTA tile.
     int M_,
@@ -421,14 +435,14 @@ struct Hmma_tile {
     static constexpr int M_PER_MMA = 16, N_PER_MMA = 16, K_PER_MMA = 16;
 
     // The number of elements computed with a single CTA-MMA.
-    static constexpr int M_PER_MMA_PER_CTA = M_PER_MMA * Cta_tile::WARPS_M,
-        N_PER_MMA_PER_CTA = N_PER_MMA * Cta_tile::WARPS_N,
-        K_PER_MMA_PER_CTA = K_PER_MMA * Cta_tile::WARPS_K;
+    static constexpr int M_PER_MMA_PER_CTA = M_PER_MMA * Cta_tile::WARPS_M,  // qk:16 o:16
+        N_PER_MMA_PER_CTA = N_PER_MMA * Cta_tile::WARPS_N,  // qk:128 o:16
+        K_PER_MMA_PER_CTA = K_PER_MMA * Cta_tile::WARPS_K;  // qk:16 o:128
 
     // The number of MMAs needed to compute the GEMM.
-    static constexpr int MMAS_M = DivUpConstexpr(Cta_tile::M, M_PER_MMA_PER_CTA),
-        MMAS_N = DivUpConstexpr(Cta_tile::N, N_PER_MMA_PER_CTA),
-        MMAS_K = DivUpConstexpr(Cta_tile::K, K_PER_MMA_PER_CTA);
+    static constexpr int MMAS_M = DivUpConstexpr(Cta_tile::M, M_PER_MMA_PER_CTA),  // qk:1 o:1
+        MMAS_N = DivUpConstexpr(Cta_tile::N, N_PER_MMA_PER_CTA),  // qk:1 o:4
+        MMAS_K = DivUpConstexpr(Cta_tile::K, K_PER_MMA_PER_CTA);  // qk:4 o:1
 
     // // The number of elements computed per warp.
     // static constexpr int M_PER_WARP = MMAS_M * M_PER_MMA,

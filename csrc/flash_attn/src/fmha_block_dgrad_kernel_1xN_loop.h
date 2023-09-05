@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "fmha_fprop_kernel_1xN.h"
 #include "fmha_kernel.h"
 #include "fmha_blockmask.h"
 #include <fmha/kernel_traits.h>
 #include <fmha/gemm.h>
+#include "gemm_q_k.h"
 
 namespace fmha {
 

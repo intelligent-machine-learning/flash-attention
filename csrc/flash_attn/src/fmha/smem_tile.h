@@ -122,7 +122,7 @@ struct Smem_tile_without_skews {
 
     // Ctor.
     inline __device__ Smem_tile_without_skews(void *smem, int tidx)
-        : smem_(__nvvm_get_smem_pointer(smem)), tidx_(tidx) {
+        : smem_(__nvvm_get_smem_pointer(smem)), smem_ptr_((char *)smem), tidx_(tidx) {
 
         // The row written by a thread. See doc/mma_smem_layout.xlsx.
         int smem_write_row = tidx / THREADS_PER_ROW;
@@ -271,6 +271,21 @@ struct Smem_tile_without_skews {
 
     // Store to the tile in shared memory.
     template< int N >
+    inline __device__ void store_naive(const Store_type (&data)[N], uint64_t = 0) {
+        int tidx = threadIdx.x;
+        int row = tidx / THREADS_PER_ROW, col = tidx % THREADS_PER_ROW;
+        uint32_t smem_th_base = this->smem_ + row * BYTES_PER_ROW + col * BYTES_PER_STS;
+        uint32_t smem_ptrs[N];
+        for (int i = 0; i < N; i++) {
+            smem_ptrs[i] = smem_th_base + i * ROWS_PER_STS * BYTES_PER_ROW;
+        }
+        if (!PARTIAL_STORE || (tidx_ / THREADS_PER_ROW < ROWS)) {
+            sts(smem_ptrs, data);
+        }
+    }
+
+    // Store to the tile in shared memory.
+    template< int N >
     inline __device__ void store(const Store_type (&data)[N], uint64_t = 0) {
         uint32_t smem_ptrs[N];
         this->compute_store_pointers(smem_ptrs);
@@ -312,6 +327,9 @@ struct Smem_tile_without_skews {
     // The buffer base offset for write.
     // int smem_write_buffer_;
     const int tidx_;
+
+    // debug pointer
+    char *smem_ptr_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1235,9 +1253,14 @@ struct Smem_tile_mma {
     enum { WARPS_N = Cta_tile::WARPS_N };
     enum { WARPS_K = Cta_tile::WARPS_K };
 
+    enum { BYTES_PER_CTA_ROW = Mma_tile::M_PER_MMA_PER_CTA * BYTES_PER_ROW };
+    enum { BYTES_PER_CTA_COL = Mma_tile::N_PER_MMA_PER_CTA * BYTES_PER_ELT };
+    enum { BYTES_PER_WARP_ROW = Mma_tile::M_PER_MMA * BYTES_PER_ROW };
+    enum { BYTES_PER_WARP_COL = Mma_tile::N_PER_MMA * BYTES_PER_ELT };
+
     static_assert(WARPS_K == 1);
-    inline __device__ Smem_tile_mma(char *smem, int tidx) {
-        uint32_t smem_ = __nvvm_get_smem_pointer(smem);
+    inline __device__ Smem_tile_mma(char *smem, int tidx): smem_ptr_(smem), tidx_(tidx) {
+        smem_ = __nvvm_get_smem_pointer(smem);
 
         int write_col, write_row;
         static_assert(WARPS_M == 1 && (WARPS_N == 4 || WARPS_N == 8) || (WARPS_M == 4 || WARPS_M == 8) || WARPS_N == 1);
@@ -1296,9 +1319,135 @@ struct Smem_tile_mma {
         this->store(regs);
     }
 
-    // uint32_t smem_;
+    /**
+     * store dP to shared memory
+    */
+    template<typename Fragment, int M, int N>
+    inline __device__ void store_dP(const Fragment (&frag_dP)[N][M]) {
+        static_assert(COLS == Cta_tile::N);
+
+        int warp = tidx_ / Cta_tile::THREADS_PER_WARP/*32*/;
+        int lane = tidx_ % Cta_tile::THREADS_PER_WARP/*32*/;
+        int warp_mi = warp / Cta_tile::WARPS_N;
+        int warp_ni = warp % Cta_tile::WARPS_N;
+
+        #pragma unroll
+        for( int mi = 0; mi < M; mi++ ) {
+            #pragma unroll
+            for( int ni = 0; ni < N; ni++ ) {
+                uint32_t smem_cta_base = smem_ + mi * BYTES_PER_CTA_ROW + ni * BYTES_PER_CTA_COL;
+                uint32_t smem_warp_base = smem_cta_base + warp_mi * BYTES_PER_WARP_ROW + warp_ni * BYTES_PER_WARP_COL;
+                /**
+                 * ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+                 * 0 <= ri < 4
+                 * ri=0: row = lane/4, col = lane%4*2
+                 * ri=1: row = lane/4 + 8, col = lane%4*2
+                 * ri=2: row = lane/4, col = lane%4*2 + 8
+                 * ri=3: row = lane/4 + 8, col = lane%4*2 + 8
+                */
+                #pragma unroll
+                for (int ri = 0; ri < 4; ++ri) {
+                    int row_in_warp = lane/4 + (ri&1)*8;
+                    int col_in_warp = lane%4*2 + (ri&2)*4;
+                    uint32_t reg_ptr = smem_warp_base + row_in_warp * BYTES_PER_ROW + col_in_warp * BYTES_PER_ELT;
+                    fmha::sts(reg_ptr, frag_dP[ni][mi].reg(ri));
+                    // *((uint32_t *)reg_ptr) = frag_dP[ni][mi].reg(ri);
+                }
+            }
+        }
+    }
+
+    /**
+     * store dP/P to shared memory
+    */
+    template<typename Fragment, int M, int N>
+    inline __device__ void store_dP_div_P(const Fragment (&frag_dP)[N][M]) {
+        static_assert(COLS == Cta_tile::N);
+
+        int warp = tidx_ / Cta_tile::THREADS_PER_WARP/*32*/;
+        int lane = tidx_ % Cta_tile::THREADS_PER_WARP/*32*/;
+        int warp_mi = warp / Cta_tile::WARPS_N;
+        int warp_ni = warp % Cta_tile::WARPS_N;
+
+        #pragma unroll
+        for( int mi = 0; mi < M; mi++ ) {
+            #pragma unroll
+            for( int ni = 0; ni < N; ni++ ) {
+                uint32_t smem_cta_base = smem_ +  mi * BYTES_PER_CTA_ROW + ni * BYTES_PER_CTA_COL;
+                uint32_t smem_warp_base = smem_cta_base + warp_mi * BYTES_PER_WARP_ROW + warp_ni * BYTES_PER_WARP_COL;
+                /**
+                 * ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+                 * 0 <= ri < 4
+                 * ri=0: row = lane/4, col = lane%4*2
+                 * ri=1: row = lane/4 + 8, col = lane%4*2
+                 * ri=2: row = lane/4, col = lane%4*2 + 8
+                 * ri=3: row = lane/4 + 8, col = lane%4*2 + 8
+                */
+                #pragma unroll
+                for (int ri = 0; ri < 4; ++ri) {
+                    int row_in_warp = lane/4 + (ri&1)*8;
+                    int col_in_warp = lane%4*2 + (ri&2)*4;
+                    uint32_t dst_ptr = smem_warp_base + row_in_warp * BYTES_PER_ROW + col_in_warp * BYTES_PER_ELT;
+                    // uint32_t P_ptr = smem_P + smem_warp_base_offset + row_in_warp * BYTES_PER_ROW + col_in_warp * BYTES_PER_ELT;
+                    uint32_t P;
+                    fmha::lds(P, dst_ptr);  // load P
+                    uint32_t dP_div_P = h2div(frag_dP[ni][mi].reg(ri), P);
+                    fmha::sts(dst_ptr, dP_div_P);
+                }
+            }
+        }
+    }
+
+    template<typename elem_type=__half, typename Fragment, int M, int N>
+    inline __device__ void store_P(const Fragment (&frag_P)[M][N], int loop_step_idx, int l) {
+        static_assert(COLS == Cta_tile::N);
+
+        int warp = tidx_ / Cta_tile::THREADS_PER_WARP/*32*/;
+        int lane = tidx_ % Cta_tile::THREADS_PER_WARP/*32*/;
+        int warp_mi = warp / Cta_tile::WARPS_N;
+        int warp_ni = warp % Cta_tile::WARPS_N;
+
+        #pragma unroll
+        for( int mi = 0; mi < M; mi++ ) {
+            #pragma unroll
+            for( int ni = 0; ni < N; ni++ ) {
+                uint32_t smem_cta_base = smem_ + mi * BYTES_PER_CTA_ROW + ni * BYTES_PER_CTA_COL;
+                uint32_t smem_warp_base = smem_cta_base + warp_mi * BYTES_PER_WARP_ROW + warp_ni * BYTES_PER_WARP_COL;
+                /**
+                 * ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
+                 * 0 <= ri < 4
+                 * ri=0: row = lane/4, col = lane%4*2
+                 * ri=1: row = lane/4 + 8, col = lane%4*2
+                 * ri=2: row = lane/4, col = lane%4*2 + 8
+                 * ri=3: row = lane/4 + 8, col = lane%4*2 + 8
+                */
+                #pragma unroll
+                for (int ri = 0; ri < 4; ++ri) {
+                    int row_in_warp = lane/4 + (ri&1)*8;
+                    int col_in_warp = lane%4*2 + (ri&2)*4;
+                    uint32_t reg_ptr = smem_warp_base + row_in_warp * BYTES_PER_ROW + col_in_warp * BYTES_PER_ELT;
+                    float elt0 = frag_P[mi][ni].elt(2*ri);
+                    float elt1 = frag_P[mi][ni].elt(2*ri+1);
+                    uint32_t temp_reg = fmha::float2_pack<elem_type>(elt0, elt1);  // TODO: may reduce the accuracy.
+                    fmha::sts(reg_ptr, temp_reg);
+                    // *((uint32_t *)reg_ptr) = frag_P[ni][mi].reg(ri);
+                    // if (false && blockIdx.x==0 && blockIdx.y==0 && blockIdx.z==0 && loop_step_idx==0 && l==0) {
+                    //     half *temp = (half *)(&temp_reg);
+                    //     printf("*** tidx= %d mi= %d ni= %d ri= %d elt0,elt1={%.3f,%.3f}, temp_reg={%.3f,%.3f}\n", tidx_, mi, ni, ri, 
+                    //         elt0, elt1, __half2float(temp[0]), __half2float(temp[1]));
+                    //     assert(elt0==__half2float(temp[0]) && elt1==__half2float(temp[1]));
+                    // }
+                }
+            }
+        }
+    }
+
+    uint32_t smem_;
     // uint32_t write_offset_;
     uint32_t smem_write_;
+
+    char *smem_ptr_;
+    int tidx_;
 };
 
 template< typename Cta_tile, typename Base = Smem_tile_mma< Cta_tile>>

@@ -314,6 +314,15 @@ static inline __device__ uint4 hmul8(uint32_t a, uint4 b) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO: @jinshi consider bf16
+static inline __device__ uint32_t h2div(const uint32_t a, const uint32_t b) {
+    __half2 result = __h2div(reinterpret_cast<const __half2 (&)>(a),
+                             reinterpret_cast<const __half2 (&)>(b));
+    return reinterpret_cast<uint32_t(&)>(result);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 template<typename T>
 inline __device__ uint32_t hrelu2(uint32_t x);
 

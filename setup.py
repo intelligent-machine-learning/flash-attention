@@ -129,6 +129,12 @@ ext_modules.append(
             "csrc/flash_attn/src/fmha_bwd_hdim128.cu",
             "csrc/flash_attn/src/fmha_block_fprop_fp16_kernel.sm80.cu",
             "csrc/flash_attn/src/fmha_block_dgrad_fp16_kernel_loop.sm80.cu",
+            "csrc/flash_attn/src/l2attn_fwd_hdim32.cu",
+            "csrc/flash_attn/src/l2attn_fwd_hdim64.cu",
+            "csrc/flash_attn/src/l2attn_fwd_hdim128.cu",
+            "csrc/flash_attn/src/l2attn_bwd_hdim32.cu",
+            "csrc/flash_attn/src/l2attn_bwd_hdim64.cu",
+            "csrc/flash_attn/src/l2attn_bwd_hdim128.cu"
         ],
         extra_compile_args={
             "cxx": ["-O3", "-std=c++17"] + generator_flag,
