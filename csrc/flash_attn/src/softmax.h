@@ -141,9 +141,9 @@ inline __device__ void apply_mask(Tensor<Engine, Layout> &tensor, const int max_
 }
 
 template <typename Engine, typename Layout>
-inline __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
-                                         const int max_seqlen_k, const int row_idx_offset_,
-                                         const int max_seqlen_q, const int warp_row_stride) {
+inline __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const uint32_t col_idx_offset_,
+                                         const uint32_t max_seqlen_k, const uint32_t row_idx_offset_,
+                                         const uint32_t warp_row_stride, const uint32_t break_point) {
     // tensor has shape (ncol=(2, MMA_M), nrow=(2, MMA_N))
     static_assert(Layout::rank == 2, "Only support 2D Tensor");
     const int lane_id = threadIdx.x % 32;
@@ -162,8 +162,8 @@ inline __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const i
                 const int col_idx_base = col_idx_offset + nj * 8;
                 #pragma unroll
                 for (int j = 0; j < size<1, 0>(tensor); ++j) {
-                    const int col_idx = col_idx_base + j;
-                    if (col_idx >= col_idx_limit) {
+                    const uint32_t col_idx = col_idx_base + j;
+                    if (col_idx >= col_idx_limit && col_idx >= break_point) {
                         tensor(make_coord(i, mi), make_coord(j, nj)) = -INFINITY;
                     }
                 }

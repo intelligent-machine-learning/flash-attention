@@ -142,8 +142,10 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
 
     int n_block_max = cute::ceil_div(binfo.actual_seqlen_k, kBlockN);
     if (Is_causal) {
-        n_block_max = std::min(n_block_max,
-                               cute::ceil_div((m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q, kBlockN));
+        n_block_max = std::min(n_block_max, cute::ceil_div((m_block + 1) * kBlockM, kBlockN));
+        if (params.is_glm_causal) {
+            n_block_max = std::max(n_block_max, cute::ceil_div(binfo.break_point, kBlockN));
+        }
         // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
         //     printf("m_block = %d, n_block_max = %d\n", m_block, n_block_max);
         // }
@@ -426,7 +428,7 @@ inline __device__ void compute_attn_1rowblock(const Params &params, const int bi
                                      // m_block * kBlockM + get<0>(idx_row(0)),
                                      m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                                      binfo.actual_seqlen_q,
-                                     kNWarps * 16);
+                                     kNWarps * 16, binfo.break_point);
                                      // m_block * kBlockM + (tidx / 32) * 16, kNWarps * 16);
                                      // m_block * kBlockM + (tidx / 32) * (kBlockM / kNWarps), 16);
         }
