@@ -12,7 +12,7 @@ from einops import rearrange
 from apex.transformer import parallel_state
 from apex.transformer import tensor_parallel
 
-from flash_attn.modules.mha import MHA, ParallelMHA
+from flash_attn_1.modules.mha import MHA, ParallelMHA
 
 is_sm8x = torch.cuda.get_device_capability('cuda')[0] >= 8
 

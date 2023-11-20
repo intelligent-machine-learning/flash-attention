@@ -14,10 +14,10 @@ from einops import rearrange
 from apex.transformer import parallel_state
 from apex.transformer import tensor_parallel
 
-from flash_attn.modules.mha import MHA, ParallelMHA
-from flash_attn.modules.mlp import FusedDenseGeluDense, ParallelFusedDenseGeluDense
-from flash_attn.modules.block import Block
-from flash_attn.utils.distributed import allreduce_sequence_parallel_grad
+from flash_attn_1.modules.mha import MHA, ParallelMHA
+from flash_attn_1.modules.mlp import FusedDenseGeluDense, ParallelFusedDenseGeluDense
+from flash_attn_1.modules.block import Block
+from flash_attn_1.utils.distributed import allreduce_sequence_parallel_grad
 
 is_sm8x = torch.cuda.get_device_capability('cuda')[0] >= 8
 

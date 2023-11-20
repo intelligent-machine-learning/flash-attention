@@ -6,8 +6,8 @@ import pytest
 
 from einops import rearrange, repeat
 
-from flash_attn.ops.layer_norm import DropoutAddLayerNorm, dropout_add_layer_norm
-from flash_attn.ops.layer_norm import dropout_add_layer_norm_subset
+from flash_attn_1.ops.layer_norm import DropoutAddLayerNorm, dropout_add_layer_norm
+from flash_attn_1.ops.layer_norm import dropout_add_layer_norm_subset
 
 
 is_sm8x = torch.cuda.get_device_capability('cuda')[0] >= 8

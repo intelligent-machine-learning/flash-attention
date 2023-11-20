@@ -10,7 +10,7 @@ import pytest
 from apex.transformer import parallel_state
 from apex.transformer import tensor_parallel
 
-from flash_attn.losses.cross_entropy import CrossEntropyLoss
+from flash_attn_1.losses.cross_entropy import CrossEntropyLoss
 
 is_sm8x = torch.cuda.get_device_capability('cuda')[0] >= 8
 

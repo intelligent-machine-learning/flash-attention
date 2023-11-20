@@ -6,9 +6,9 @@ import torch.nn.functional as F
 
 from einops import rearrange, repeat
 
-from flash_attn.utils.benchmark import benchmark_all, benchmark_forward, benchmark_backward, benchmark_combined
-from flash_attn.bert_padding import unpad_input, pad_input
-from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+from flash_attn_1.utils.benchmark import benchmark_all, benchmark_forward, benchmark_backward, benchmark_combined
+from flash_attn_1.bert_padding import unpad_input, pad_input
+from flash_attn_1.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
 
 
 def attention_ref(qkv, attn_mask, dropout_p, upcast=False, causal=False):

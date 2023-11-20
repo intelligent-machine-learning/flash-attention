@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import flash_attn_cuda
+import flash_attn_1_cuda
 
 
 def _get_block_size(device, head_dim, is_dropout):
@@ -18,7 +18,7 @@ def _flash_attn_forward(q, k, v, out, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, 
     it will be set by an internal heuristic. We're exposing num_splits mostly for benchmarking.
     Don't change it unless you know what you're doing.
     """
-    softmax_lse, *rest = flash_attn_cuda.fwd(
+    softmax_lse, *rest = flash_attn_1_cuda.fwd(
         q, k, v, out, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, dropout_p,
         softmax_scale, False, causal, return_softmax, num_splits, generator, attn_mask, attn_bias
     )
@@ -39,7 +39,7 @@ def _flash_attn_backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens
     This hyperparameter can be tuned for performance, but default value (heuristic) should work fine.
     """
     dout = dout.contiguous()  # CUDA code assumes that dout is contiguous
-    softmax_d, *rest = flash_attn_cuda.bwd(
+    softmax_d, *rest = flash_attn_1_cuda.bwd(
         dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k,
         max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, False, causal, num_splits, generator,
         attn_mask, attn_bias)

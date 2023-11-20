@@ -102,7 +102,7 @@ torch_dir = torch.__path__[0]
 if os.path.exists(os.path.join(torch_dir, "include", "ATen", "CUDAGeneratorImpl.h")):
     generator_flag = ["-DOLD_GENERATOR_PATH"]
 
-raise_if_cuda_home_none("flash_attn")
+raise_if_cuda_home_none("flash_attn_1")
 # Check, if CUDA11 is installed for compute capability 8.0
 cc_flag = []
 _, bare_metal_version = get_cuda_bare_metal_version(CUDA_HOME)
@@ -121,7 +121,7 @@ if bare_metal_version >= Version("11.8"):
 subprocess.run(["git", "submodule", "update", "--init", "csrc/flash_attn/cutlass"])
 ext_modules.append(
     CUDAExtension(
-        name="flash_attn_cuda",
+        name="flash_attn_1_cuda",
         sources=[
             "csrc/flash_attn/fmha_api.cpp",
             "csrc/flash_attn/src/fmha_fwd_hdim32.cu",
@@ -281,10 +281,10 @@ ext_modules.append(
 )
 
 setup(
-    name="flash_attn",
+    name="flash_attn_1",
     version="0.2.6-2",
     packages=find_packages(
-        exclude=("build", "csrc", "include", "tests", "dist", "docs", "benchmarks", "flash_attn.egg-info",)
+        exclude=("build", "csrc", "include", "tests", "dist", "docs", "benchmarks", "flash_attn_1.egg-info",)
     ),
     author="Tri Dao",
     author_email="trid@stanford.edu",

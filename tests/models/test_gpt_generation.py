@@ -8,10 +8,10 @@ from einops import rearrange
 from transformers import GPT2Config, GPT2Tokenizer
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel as GPT2LMHeadModelHF
 
-from flash_attn.models.gpt import GPTLMHeadModel
-from flash_attn.models.gpt import remap_state_dict_gpt2
-from flash_attn.utils.pretrained import state_dict_from_pretrained
-from flash_attn.utils.generation import greedy_decode
+from flash_attn_1.models.gpt import GPTLMHeadModel
+from flash_attn_1.models.gpt import remap_state_dict_gpt2
+from flash_attn_1.utils.pretrained import state_dict_from_pretrained
+from flash_attn_1.utils.generation import greedy_decode
 
 
 # TODO: test with rotary embedding

@@ -14,8 +14,8 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 # import fused_dense_cuda  # from apex
 import fused_dense_lib as fused_dense_cuda
 
-from flash_attn.ops.gelu_activation import gelu_bwd
-from flash_attn.utils.distributed import all_gather_raw, reduce_scatter_raw, reduce_scatter
+from flash_attn_1.ops.gelu_activation import gelu_bwd
+from flash_attn_1.utils.distributed import all_gather_raw, reduce_scatter_raw, reduce_scatter
 
 
 class FusedDenseFunc(torch.autograd.Function):

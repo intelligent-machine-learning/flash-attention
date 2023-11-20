@@ -116,7 +116,7 @@ cc_flag.append("arch=compute_80,code=sm_80")
 subprocess.run(["git", "submodule", "update", "--init", "csrc/flash_attn/cutlass"])
 ext_modules.append(
     CUDAExtension(
-        name="flash_attn_cuda",
+        name="flash_attn_1_cuda",
         sources=[
             "csrc/flash_attn/fmha_api.cpp",
             "csrc/flash_attn/src/fmha_fwd_hdim32.cu",

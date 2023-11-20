@@ -6,7 +6,7 @@ import pytest
 
 from einops import rearrange
 
-from flash_attn.ops.fused_dense import FusedDense, FusedDenseGeluDense
+from flash_attn_1.ops.fused_dense import FusedDense, FusedDenseGeluDense
 
 
 @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])

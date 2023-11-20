@@ -10,7 +10,7 @@ from torch.nn.modules.utils import _pair
 from einops import rearrange
 
 try:
-    from flash_attn.ops.fused_dense import FusedDense
+    from flash_attn_1.ops.fused_dense import FusedDense
 except ImportError:
     FusedDense = None
 

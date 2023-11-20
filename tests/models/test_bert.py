@@ -11,9 +11,9 @@ from transformers import BertConfig
 from transformers.models.bert.modeling_bert import BertModel as BertModelHF
 from transformers.models.bert.modeling_bert import BertForPreTraining as BertForPreTrainingHF
 
-from flash_attn.models.bert import BertModel, BertForPreTraining
-from flash_attn.models.bert import remap_state_dict
-from flash_attn.utils.pretrained import state_dict_from_pretrained
+from flash_attn_1.models.bert import BertModel, BertForPreTraining
+from flash_attn_1.models.bert import remap_state_dict
+from flash_attn_1.utils.pretrained import state_dict_from_pretrained
 
 
 @pytest.mark.parametrize('model_name', ["bert-base-uncased", "bert-large-uncased"])

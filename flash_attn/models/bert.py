@@ -22,26 +22,26 @@ from transformers.models.bert.modeling_bert import BertForPreTrainingOutput
 
 from einops import rearrange
 
-from flash_attn.modules.mha import MHA
-from flash_attn.modules.mlp import Mlp, FusedDenseGeluDense
-from flash_attn.modules.block import Block
-from flash_attn.modules.embedding import BertEmbeddings
-from flash_attn.bert_padding import unpad_input, pad_input
-from flash_attn.bert_padding import index_first_axis, index_first_axis_residual
-from flash_attn.utils.pretrained import state_dict_from_pretrained
+from flash_attn_1.modules.mha import MHA
+from flash_attn_1.modules.mlp import Mlp, FusedDenseGeluDense
+from flash_attn_1.modules.block import Block
+from flash_attn_1.modules.embedding import BertEmbeddings
+from flash_attn_1.bert_padding import unpad_input, pad_input
+from flash_attn_1.bert_padding import index_first_axis, index_first_axis_residual
+from flash_attn_1.utils.pretrained import state_dict_from_pretrained
 
 try:
-    from flash_attn.ops.fused_dense import FusedDense
+    from flash_attn_1.ops.fused_dense import FusedDense
 except ImportError:
     FusedDense = None
 
 try:
-    from flash_attn.ops.layer_norm import dropout_add_layer_norm, layer_norm
+    from flash_attn_1.ops.layer_norm import dropout_add_layer_norm, layer_norm
 except ImportError:
     dropout_add_layer_norm, layer_norm = None, None
 
 try:
-    from flash_attn.losses.cross_entropy import CrossEntropyLoss
+    from flash_attn_1.losses.cross_entropy import CrossEntropyLoss
 except ImportError:
     CrossEntropyLoss = None
 

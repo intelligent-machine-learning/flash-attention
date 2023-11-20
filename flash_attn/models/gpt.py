@@ -14,26 +14,26 @@ import torch.nn.functional as F
 
 from transformers import GPT2Config
 
-from flash_attn.modules.mha import MHA, ParallelMHA
-from flash_attn.modules.mlp import Mlp, FusedDenseGeluDense, ParallelFusedDenseGeluDense
-from flash_attn.modules.block import Block
-from flash_attn.modules.embedding import GPT2Embeddings, ParallelGPT2Embeddings
-from flash_attn.utils.distributed import sync_sequence_parallel_params
-from flash_attn.utils.pretrained import state_dict_from_pretrained
-from flash_attn.utils.generation import GenerationMixin
+from flash_attn_1.modules.mha import MHA, ParallelMHA
+from flash_attn_1.modules.mlp import Mlp, FusedDenseGeluDense, ParallelFusedDenseGeluDense
+from flash_attn_1.modules.block import Block
+from flash_attn_1.modules.embedding import GPT2Embeddings, ParallelGPT2Embeddings
+from flash_attn_1.utils.distributed import sync_sequence_parallel_params
+from flash_attn_1.utils.pretrained import state_dict_from_pretrained
+from flash_attn_1.utils.generation import GenerationMixin
 
 try:
-    from flash_attn.ops.fused_dense import ColumnParallelLinear
+    from flash_attn_1.ops.fused_dense import ColumnParallelLinear
 except ImportError:
     ColumnParallelLinear = None
 
 try:
-    from flash_attn.ops.layer_norm import dropout_add_layer_norm
+    from flash_attn_1.ops.layer_norm import dropout_add_layer_norm
 except ImportError:
     dropout_add_layer_norm = None
 
 try:
-    from flash_attn.ops.triton.mlp import FusedDenseSqreluDense
+    from flash_attn_1.ops.triton.mlp import FusedDenseSqreluDense
 except ImportError:
     FusedDenseSqreluDense = None
 

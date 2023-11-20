@@ -8,12 +8,12 @@ import pytest
 
 from einops import rearrange, repeat
 
-from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_unpadded_qkvpacked_func, _get_block_size, flash_attn_unpadded_kvpacked_func, flash_attn_unpadded_func
-from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_split_func
-from flash_attn.bert_padding import unpad_input, pad_input, index_first_axis
+from flash_attn_1.flash_attn_interface import flash_attn_func, flash_attn_unpadded_qkvpacked_func, _get_block_size, flash_attn_unpadded_kvpacked_func, flash_attn_unpadded_func
+from flash_attn_1.flash_attn_interface import flash_attn_unpadded_qkvpacked_split_func
+from flash_attn_1.bert_padding import unpad_input, pad_input, index_first_axis
 
 try:
-    from flash_attn.flash_attn_triton import flash_attn_func
+    from flash_attn_1.flash_attn_triton import flash_attn_func
 except (ImportError, AttributeError):  # Older version of Triton doesn't have tl.constexpr
     flash_attn_func = None
 

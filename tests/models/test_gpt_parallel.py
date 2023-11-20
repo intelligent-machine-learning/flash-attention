@@ -12,9 +12,9 @@ from transformers import GPT2Config
 
 from apex.transformer import parallel_state
 
-from flash_attn.models.gpt import GPTLMHeadModel
-from flash_attn.losses.cross_entropy import CrossEntropyLoss
-from flash_attn.utils.distributed import allreduce_sequence_parallel_grad
+from flash_attn_1.models.gpt import GPTLMHeadModel
+from flash_attn_1.losses.cross_entropy import CrossEntropyLoss
+from flash_attn_1.utils.distributed import allreduce_sequence_parallel_grad
 
 is_sm8x = torch.cuda.get_device_capability('cuda')[0] >= 8
 

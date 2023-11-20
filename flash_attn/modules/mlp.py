@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 try:
-    from flash_attn.ops.fused_dense import FusedDenseGeluDense, ParallelFusedDenseGeluDense
+    from flash_attn_1.ops.fused_dense import FusedDenseGeluDense, ParallelFusedDenseGeluDense
 except ImportError:
     FusedDenseGeluDense, ParallelFusedDenseGeluDense = None, None
 

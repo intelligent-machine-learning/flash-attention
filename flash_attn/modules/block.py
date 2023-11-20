@@ -10,11 +10,11 @@ from torch import Tensor
 
 from torchvision.ops import StochasticDepth
 
-from flash_attn.modules.mha import MHA
-from flash_attn.modules.mlp import Mlp
+from flash_attn_1.modules.mha import MHA
+from flash_attn_1.modules.mlp import Mlp
 
 try:
-    from flash_attn.ops.layer_norm import dropout_add_layer_norm
+    from flash_attn_1.ops.layer_norm import dropout_add_layer_norm
 except ImportError:
     dropout_add_layer_norm = None
 

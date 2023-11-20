@@ -6,14 +6,14 @@ import torch.nn.functional as F
 
 from einops import rearrange, repeat
 
-from flash_attn.utils.benchmark import benchmark_forward, benchmark_all, pytorch_profiler
-from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
-# from flash_attn.triton.fused_attention import attention as attention
-from flash_attn.flash_attn_triton import flash_attn_qkvpacked_func
-from flash_attn.flash_attn_triton_og import attention as attention_og
+from flash_attn_1.utils.benchmark import benchmark_forward, benchmark_all, pytorch_profiler
+from flash_attn_1.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+# from flash_attn_1.triton.fused_attention import attention as attention
+from flash_attn_1.flash_attn_triton import flash_attn_qkvpacked_func
+from flash_attn_1.flash_attn_triton_og import attention as attention_og
 
 try:
-    from flash_attn.fused_softmax import scaled_upper_triang_masked_softmax
+    from flash_attn_1.fused_softmax import scaled_upper_triang_masked_softmax
 except ImportError:
     scaled_upper_triang_masked_softmax = None
 

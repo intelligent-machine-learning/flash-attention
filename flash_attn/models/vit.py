@@ -12,14 +12,14 @@ from torch.nn.init import trunc_normal_
 from einops import rearrange
 
 from timm.models.helpers import named_apply
-from flash_attn.layers.patch_embed import PatchEmbed
+from flash_attn_1.layers.patch_embed import PatchEmbed
 
-from flash_attn.modules.mha import MHA
-from flash_attn.modules.mlp import Mlp, FusedDenseGeluDense
-from flash_attn.modules.block import Block
+from flash_attn_1.modules.mha import MHA
+from flash_attn_1.modules.mlp import Mlp, FusedDenseGeluDense
+from flash_attn_1.modules.block import Block
 
 try:
-    from flash_attn.ops.layer_norm import dropout_add_layer_norm
+    from flash_attn_1.ops.layer_norm import dropout_add_layer_norm
 except ImportError:
     dropout_add_layer_norm = None
 

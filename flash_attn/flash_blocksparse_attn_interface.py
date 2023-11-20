@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 
-import flash_attn_cuda
+import flash_attn_1_cuda
 
 
 def convert_blockmask(blockmask, causal):
@@ -42,7 +42,7 @@ def convert_blockmask(blockmask, causal):
 
 def _flash_blocksparse_attn_forward(qkv, cu_seqlens, blockmask, dropout_p, max_s, softmax_scale,
                                      causal, return_softmax):
-    context, softmax_lse, *rest = flash_attn_cuda.fwd_block(qkv, cu_seqlens, blockmask, dropout_p,
+    context, softmax_lse, *rest = flash_attn_1_cuda.fwd_block(qkv, cu_seqlens, blockmask, dropout_p,
                                                              max_s, softmax_scale, causal,
                                                              return_softmax, None)
     # if context.isnan().any() or softmax_lse.isnan().any():
@@ -53,7 +53,7 @@ def _flash_blocksparse_attn_forward(qkv, cu_seqlens, blockmask, dropout_p, max_s
 
 def _flash_blocksparse_attn_backward(dout, qkv, out, S_dmask, softmax_lse, cu_seqlens, blockmask,
                                       dropout_p, max_s, softmax_scale, causal):
-    dqkv, dp, softmax_d = flash_attn_cuda.bwd_block(dout, qkv, out, S_dmask, softmax_lse, cu_seqlens,
+    dqkv, dp, softmax_d = flash_attn_1_cuda.bwd_block(dout, qkv, out, S_dmask, softmax_lse, cu_seqlens,
                                                      blockmask, dropout_p, softmax_scale, max_s,
                                                      causal, None)
     # if dqkv.isnan().any() or softmax_d.isnan().any():
