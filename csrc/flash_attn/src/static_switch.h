@@ -38,6 +38,15 @@
 
 #define FWD_HEADDIM_SWITCH(HEADDIM, ...)   \
   [&] {                                    \
+      constexpr static int kHeadDim = 32;  \
+      return __VA_ARGS__();                \
+  }()
+
+/*
+
+
+#define FWD_HEADDIM_SWITCH(HEADDIM, ...)   \
+  [&] {                                    \
     if (HEADDIM <= 32) {                   \
       constexpr static int kHeadDim = 32;  \
       return __VA_ARGS__();                \
@@ -64,3 +73,4 @@
       return __VA_ARGS__();                \
     }                                      \
   }()
+*/
