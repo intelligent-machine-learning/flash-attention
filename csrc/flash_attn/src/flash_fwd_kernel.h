@@ -105,6 +105,7 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
 
         // (kBlockM, kBlockN, m_block, [0, 50, 150], [20, 100, 300])
         // [up_row_idx, down_row_idx)
+        _n_block_max = n_block_max;
         if ((up_row_idx <= 0 && down_row_idx >= 0) || (up_row_idx <= 20 && down_row_idx >= 20)) {
             _n_block_max = std::max(n_block_max, cute::ceil_div(20, kBlockN));
             delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
@@ -117,7 +118,7 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
             _n_block_max = std::max(n_block_max, cute::ceil_div(300, kBlockN));
             delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
         }
-        n_block_max = n_block_max;
+        n_block_max = _n_block_max;
         // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
         //     printf("m_block = %d, n_block_max = %d\n", m_block, n_block_max);
         // }

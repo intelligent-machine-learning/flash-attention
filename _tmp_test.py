@@ -47,15 +47,43 @@ pack_glm_mask = torch.tensor(
     ]
 )
 
+def mock_mask(device):
+    pack_attention_mask = torch.tril(
+                torch.ones([seqlen, seqlen]))
+    def build_mask_matrix(seq_length, sep):
+        # https://github.com/pytorch/pytorch/issues/101932, fix triu/tril bf16 support
+        m = torch.ones((1, seq_length, seq_length))
+        mask = torch.arange(
+            1, m.shape[-1] + 1).reshape(1, -1, 1).to(m.device)
+        ids = torch.arange(
+            1, m.shape[-1] + 1).reshape(1, 1, -1).expand(1, m.shape[-1], -1).to(m.device)
+        m = (ids <= mask).type_as(m)
+        m[0, :, :int(sep)] = 1
+        m = m.squeeze(0)
+        return m
+    attention_mask_list = []
+    for len_data, len_input in [(50, 20), (150 - 50, 100 - 50), (seqlen - 150, 300 - 150)]:
+        attention_mask = build_mask_matrix(len_data, len_input)
+        attention_mask_list.append(attention_mask)
+    total_len = 0
+    for i in range(len(attention_mask_list)):
+        attention_mask = attention_mask_list[i]
+        pack_attention_mask[total_len:total_len + attention_mask.shape[0],
+                            total_len:total_len + attention_mask.shape[0]] = attention_mask
+        total_len += len(attention_mask_list[i])
+    return pack_attention_mask.to(device)
+
+
 Q = qkv[:, :, 0, :, :]
 K = qkv[:, :, 1, :, :]
 V = qkv[:, :, 2, :, :]
 
 
-def ref_attn_compute(Q, K, V):
+def ref_attn_compute(Q, K, V, mask=None):
     attn_mask = torch.ones(seqlen, seqlen, dtype=torch.float32, device=device).tril(diagonal=0)
-    attn_mask[:, :k] = 1.
-    attn_mask = (1-attn_mask)*(-60000.)
+    if mask is not None:
+        attn_mask = attn_mask.bool() | mask.bool()
+    attn_mask = (1-attn_mask.float())*(-60000.)
     attn_mask = attn_mask.to(dtype)
     #import pdb;pdb.set_trace()
     #attn_weight = torch.softmax((Q @ K.transpose(-2, -1) / math.sqrt(Q.size(-1))) + attn_mask, dim=-1)
@@ -72,8 +100,8 @@ def ref_attn_compute(Q, K, V):
 
 #with freeze_rng_state():
 with freeze_rng_state(), torch.cuda.amp.autocast(dtype=dtype):
-    autocast_attn = ref_attn_compute(Q, K, V)
-fp32_attn = ref_attn_compute(Q.to(torch.float32), K.to(torch.float32), V.to(torch.float32))
+    autocast_attn = ref_attn_compute(Q, K, V, mask=mock_mask(device))
+fp32_attn = ref_attn_compute(Q.to(torch.float32), K.to(torch.float32), V.to(torch.float32), mask=mock_mask(device))
 
 out = torch.squeeze(out)
 
