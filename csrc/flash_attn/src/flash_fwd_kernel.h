@@ -95,9 +95,29 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
 
     const int n_block_min = !Is_local ? 0 : std::max(0, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);
     int n_block_max = cute::ceil_div(binfo.actual_seqlen_k, kBlockN);
+    int up_row_idx = m_block * kBlockM;
+    int down_row_idx = (m_block + 1) * kBlockM;
+    int _n_block_max;
+    int delta_block_cnt = 0;
     if (Is_causal || Is_local) {
         n_block_max = std::min(n_block_max,
                                cute::ceil_div((m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right, kBlockN));
+
+        // (kBlockM, kBlockN, m_block, [0, 50, 150], [20, 100, 300])
+        // [up_row_idx, down_row_idx)
+        if ((up_row_idx <= 0 && down_row_idx >= 0) || (up_row_idx <= 20 && down_row_idx >= 20)) {
+            _n_block_max = std::max(n_block_max, cute::ceil_div(20, kBlockN));
+            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        }
+        if ((up_row_idx <= 50 && down_row_idx >= 50) || (up_row_idx <= 100 && down_row_idx >= 100)) {
+            _n_block_max = std::max(n_block_max, cute::ceil_div(100, kBlockN));
+            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        }
+        if ((up_row_idx <= 150 && down_row_idx >= 150) || (up_row_idx <= 300 && down_row_idx >= 300)) {
+            _n_block_max = std::max(n_block_max, cute::ceil_div(300, kBlockN));
+            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        }
+        n_block_max = n_block_max;
         // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
         //     printf("m_block = %d, n_block_max = %d\n", m_block, n_block_max);
         // }
@@ -328,9 +348,9 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
 
     // If not even_N, then seqlen_k might end in the middle of a block. In that case we need to
     // mask 2 blocks (e.g. when kBlockM == kBlockN), not just 1.
-    constexpr int n_masking_steps = (!Is_causal && !Is_local)
-        ? 1
-        : ((Is_even_MN && Is_causal) ? cute::ceil_div(kBlockM, kBlockN) : cute::ceil_div(kBlockM, kBlockN) + 1);
+    int n_masking_steps = (!Is_causal && !Is_local)
+        ? 1 + delta_block_cnt
+        : ((Is_even_MN && Is_causal) ? cute::ceil_div(kBlockM, kBlockN) : cute::ceil_div(kBlockM, kBlockN) + 1) + delta_block_cnt;
     #pragma unroll
     for (int masking_step = 0; masking_step < n_masking_steps; ++masking_step, --n_block) {
         Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{});  // (MMA=4, MMA_M, MMA_N)

@@ -157,7 +157,16 @@ __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_i
         for (int i = 0; i < size<0, 0>(tensor); ++i) {
             const int row_idx = row_idx_base + i * 8;
             const int col_idx_limit_left = std::max(0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left);
-            const int col_idx_limit_right = std::min(max_seqlen_k, row_idx + 1 + max_seqlen_k - max_seqlen_q + window_size_right);
+            int col_idx_limit_right = std::min(max_seqlen_k, row_idx + 1 + max_seqlen_k - max_seqlen_q + window_size_right);
+            if (row_idx >= 0 && row_idx < 20) {
+                col_idx_limit_right = std::max(col_idx_limit_right, 20);
+            }
+            if (row_idx >= 50 && row_idx < 100) {
+                col_idx_limit_right = std::max(col_idx_limit_right, 100);
+            }
+            if (row_idx >= 150 && row_idx < 300) {
+                col_idx_limit_right = std::max(col_idx_limit_right, 300);
+            }
             #pragma unroll
             for (int nj = 0; nj < size<1, 1>(tensor); ++nj) {
                 const int col_idx_base = col_idx_offset + nj * 8;
