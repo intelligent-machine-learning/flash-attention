@@ -847,20 +847,24 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
             // But we still want to mask out elements beyond actual_seqlen_k.
             if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k
                 || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+                int* _tmpArray2;
                 flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                          binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                          binfo.actual_seqlen_q,
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
-                                         AtomLayoutMS * 16);
+                                         AtomLayoutMS * 16,
+                                         0, _tmpArray2, _tmpArray2);
             }
         } else if (Is_local) {
             if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
                 || (m_block + 1) * kBlockM >= n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left
                 || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+                int* _tmpArray;
                 flash::apply_mask_local(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                         binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                         binfo.actual_seqlen_q, AtomLayoutMS * 16,
-                                        params.window_size_left, params.window_size_right);
+                                        params.window_size_left, params.window_size_right,
+                                        0, _tmpArray, _tmpArray);
             }
 
         }
