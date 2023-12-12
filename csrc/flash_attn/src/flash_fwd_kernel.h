@@ -106,18 +106,30 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
         // (kBlockM, kBlockN, m_block, [0, 50, 150], [20, 100, 300])
         // [up_row_idx, down_row_idx)
         _n_block_max = n_block_max;
-        if ((up_row_idx <= 0 && down_row_idx >= 0) || (up_row_idx <= 20 && down_row_idx >= 20)) {
-            _n_block_max = std::max(n_block_max, cute::ceil_div(20, kBlockN));
-            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        index_t base_idx = params.glm_mask_batch_stride * bidb;
+        int startpoint;
+        int endpoint;
+        for (index_t idx = 0; idx < params.glm_mask_pair_stride; ++idx){
+            startpoint = params.glm_mask_ptr[base_idx + idx];
+            endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx];
+            if ((up_row_idx <= startpoint && down_row_idx >= startpoint) || (up_row_idx <= endpoint && down_row_idx >= endpoint)) {
+                _n_block_max = std::max(n_block_max, cute::ceil_div(endpoint, kBlockN));
+                delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+            }
         }
-        if ((up_row_idx <= 50 && down_row_idx >= 50) || (up_row_idx <= 100 && down_row_idx >= 100)) {
-            _n_block_max = std::max(n_block_max, cute::ceil_div(100, kBlockN));
-            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
-        }
-        if ((up_row_idx <= 150 && down_row_idx >= 150) || (up_row_idx <= 300 && down_row_idx >= 300)) {
-            _n_block_max = std::max(n_block_max, cute::ceil_div(300, kBlockN));
-            delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
-        }
+
+        // if ((up_row_idx <= 0 && down_row_idx >= 0) || (up_row_idx <= 20 && down_row_idx >= 20)) {
+        //     _n_block_max = std::max(n_block_max, cute::ceil_div(20, kBlockN));
+        //     delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        // }
+        // if ((up_row_idx <= 50 && down_row_idx >= 50) || (up_row_idx <= 100 && down_row_idx >= 100)) {
+        //     _n_block_max = std::max(n_block_max, cute::ceil_div(100, kBlockN));
+        //     delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        // }
+        // if ((up_row_idx <= 150 && down_row_idx >= 150) || (up_row_idx <= 300 && down_row_idx >= 300)) {
+        //     _n_block_max = std::max(n_block_max, cute::ceil_div(300, kBlockN));
+        //     delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
+        // }
         n_block_max = _n_block_max;
         // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
         //     printf("m_block = %d, n_block_max = %d\n", m_block, n_block_max);

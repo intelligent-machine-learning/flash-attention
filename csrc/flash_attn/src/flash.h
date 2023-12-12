@@ -130,6 +130,12 @@ struct Flash_fwd_params : public Qkv_params {
     bool is_rotary_interleaved;
 
     int num_splits;  // For split-KV version
+
+    // pack glm mask
+    int *__restrict__ glm_mask_ptr;
+    index_t glm_mask_batch_stride;
+    index_t glm_mask_pair_stride;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

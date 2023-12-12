@@ -23,7 +23,15 @@ qkv = torch.randn(batch_size, seqlen, 3, nheads, d, device=device, dtype=dtype,
                   requires_grad=True)
 with freeze_rng_state():
     out, lse, S_dmask = flash_attn_qkvpacked_func(
-        qkv, 0.0, return_attn_probs=True, causal=True
+        qkv, 0.0, return_attn_probs=True, causal=True,
+        glm_mask=torch.tensor(
+            [
+                [[0, 50, 150], [20, 100, 300]],
+                [[0, 50, 150], [20, 100, 300]],
+                [[0, 50, 150], [20, 100, 300]],
+                [[0, 50, 150], [20, 100, 300]],
+            ]
+        ).to(torch.int32).to(device)
     )
 k = 10
 k = 200

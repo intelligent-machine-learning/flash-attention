@@ -42,7 +42,8 @@ void set_params_fprop(Flash_fwd_params &params,
                       float p_dropout,
                       float softmax_scale,
                       int window_size_left,
-                      int window_size_right) {
+                      int window_size_right,
+                      const at::Tensor glm_mask) {
 
     // Reset the parameters
     memset(&params, 0, sizeof(params));
@@ -118,6 +119,11 @@ void set_params_fprop(Flash_fwd_params &params,
     params.window_size_right = window_size_right;
 
     params.is_seqlens_k_cumulative = true;
+
+    // pack glm mask
+    params.glm_mask_ptr = static_cast<int *>(glm_mask.data_ptr());
+    params.glm_mask_batch_stride = glm_mask.stride(0);
+    params.glm_mask_pair_stride = glm_mask.stride(1);
 }
 
 void set_params_dgrad(Flash_bwd_params &params,
@@ -150,7 +156,8 @@ void set_params_dgrad(Flash_bwd_params &params,
                       float p_dropout,
                       float softmax_scale,
                       int window_size_left,
-                      int window_size_right) {
+                      int window_size_right,
+                      const at::Tensor glm_mask) {
 
     set_params_fprop(params,
                      b, seqlen_q, seqlen_k, seqlen_q_rounded, seqlen_k_rounded, h, h_k, d, d_rounded,
@@ -163,7 +170,8 @@ void set_params_dgrad(Flash_bwd_params &params,
                      p_dropout,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     glm_mask);
 
     // Set the pointers and strides.
     params.do_ptr = dout.data_ptr();
@@ -259,7 +267,8 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x head_size
         const int window_size_left,
         int window_size_right,
         const bool return_softmax,
-        c10::optional<at::Generator> gen_) {
+        c10::optional<at::Generator> gen_,
+        const at::Tensor &glm_mask) {
 
     auto dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
@@ -372,7 +381,8 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x head_size
                      p_dropout,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     glm_mask);
 
     // This needs to match with run_mha_fwd_splitkv_dispatch
     const int block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
@@ -450,7 +460,8 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                const int window_size_left,
                int window_size_right,
                const bool return_softmax,
-               c10::optional<at::Generator> gen_) {
+               c10::optional<at::Generator> gen_,
+               const at::Tensor &glm_mask) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -572,7 +583,8 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                      p_dropout,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     glm_mask);
 
     // number of times random will be generated per thread, to offset philox counter in thc random
     // state
@@ -640,7 +652,8 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
         const int window_size_left,
         int window_size_right,
         c10::optional<at::Generator> gen_,
-        c10::optional<at::Tensor> &rng_state) {
+        c10::optional<at::Tensor> &rng_state,
+        const at::Tensor &glm_mask) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -790,7 +803,8 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
                      p_dropout,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     glm_mask);
 
     auto launch = &run_mha_bwd;
     // launch(params, stream, /*configure=*/true);
@@ -856,7 +870,8 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                const int window_size_left,
                int window_size_right,
                c10::optional<at::Generator> gen_,
-               c10::optional<at::Tensor> &rng_state) {
+               c10::optional<at::Tensor> &rng_state,
+               const at::Tensor &glm_mask) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -1022,7 +1037,8 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      p_dropout,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     glm_mask);
 
     auto launch = &run_mha_bwd;
     // launch(params, stream, /*configure=*/true);
@@ -1169,6 +1185,8 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
 
     auto softmax_lse = torch::empty({batch_size, num_heads, seqlen_q}, opts.dtype(at::kFloat));
 
+    // TODO testing
+    auto _empty = torch::empty({1,1,1});
     Flash_fwd_params params;
     set_params_fprop(params,
                      batch_size,
@@ -1185,7 +1203,8 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
                      /*p_dropout=*/0.f,
                      softmax_scale,
                      window_size_left,
-                     window_size_right);
+                     window_size_right,
+                     /*glm_mask=*/_empty);
 
     at::Tensor k, v, k_padded, v_padded;
     if (k_.has_value()) {
