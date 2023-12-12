@@ -666,13 +666,13 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     int left_col_idx = n_block * kBlockN;
     int right_col_idx = (n_block + 1) * kBlockN;
     if ((left_col_idx <= 150 && right_col_idx >= 150) || (left_col_idx <= 300 && right_col_idx >= 300)) {
-        m_block_min = std::min(m_block_min, cute::ceil_div(150, kBlockM));
+        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(150 / kBlockM)));
     }
     if ((left_col_idx <= 50 && right_col_idx >= 50) || (left_col_idx <= 100 && right_col_idx >= 100)) {
-        m_block_min = std::min(m_block_min, cute::ceil_div(50, kBlockM));
+        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(50 / kBlockM)));
     }
     if ((left_col_idx <= 0 && right_col_idx >= 0) || (left_col_idx <= 20 && right_col_idx >= 20)) {
-        m_block_min = std::min(m_block_min, cute::ceil_div(0, kBlockM));
+        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(0 / kBlockM)));
     }
 
 
