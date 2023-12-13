@@ -161,7 +161,7 @@ __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_i
             int col_idx_limit_right = std::min(max_seqlen_k, row_idx + 1 + max_seqlen_k - max_seqlen_q + window_size_right);
             for (int idx = 0; idx < involved_pair_num; ++idx){
                 if (row_idx >= involved_startpoints[idx] && row_idx < involved_endpoints[idx]) {
-                    col_idx_limit_right = std::max(col_idx_limit_right, 20);
+                    col_idx_limit_right = std::max(col_idx_limit_right, involved_endpoints[idx]);
                 }
             }
             // if (row_idx >= 0 && row_idx < 20) {

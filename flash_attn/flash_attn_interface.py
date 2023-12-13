@@ -118,6 +118,7 @@ def _flash_attn_backward(
     causal,
     window_size,
     rng_state=None,
+    glm_mask=None,
 ):
     maybe_contiguous = lambda x: x.contiguous() if x.stride(-1) != 1 else x
     # dq, dk, dv are allocated by us so they should already be contiguous
@@ -139,6 +140,7 @@ def _flash_attn_backward(
         window_size[1],
         None,
         rng_state,
+        glm_mask
     )
     return dq, dk, dv, softmax_d
 
@@ -210,7 +212,7 @@ class FlashAttnQKVPackedFunc(torch.autograd.Function):
             return_softmax=return_softmax and dropout_p > 0,
             glm_mask=glm_mask,
         )
-        ctx.save_for_backward(q, k, v, out_padded, softmax_lse, rng_state)
+        ctx.save_for_backward(q, k, v, out_padded, softmax_lse, rng_state, glm_mask)
         ctx.dropout_p = dropout_p
         ctx.softmax_scale = softmax_scale
         ctx.causal = causal
@@ -219,7 +221,7 @@ class FlashAttnQKVPackedFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dout, *args):
-        q, k, v, out, softmax_lse, rng_state = ctx.saved_tensors
+        q, k, v, out, softmax_lse, rng_state, glm_mask = ctx.saved_tensors
         qkv_shape = q.shape[:-2] + (3, *q.shape[-2:])
         dqkv = torch.empty(qkv_shape, dtype=q.dtype, device=q.device)
         _flash_attn_backward(
@@ -237,9 +239,10 @@ class FlashAttnQKVPackedFunc(torch.autograd.Function):
             ctx.causal,
             ctx.window_size,
             rng_state=rng_state,
+            glm_mask=glm_mask,
         )
         dqkv = dqkv[..., : dout.shape[-1]]  # We could have padded the head dimension
-        return dqkv, None, None, None, None, None
+        return dqkv, None, None, None, None, None, None
 
 
 class FlashAttnVarlenQKVPackedFunc(torch.autograd.Function):

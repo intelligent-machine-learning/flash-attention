@@ -665,15 +665,32 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     // [left_col_idx, right_col_idx)
     int left_col_idx = n_block * kBlockN;
     int right_col_idx = (n_block + 1) * kBlockN;
-    if ((left_col_idx <= 150 && right_col_idx >= 150) || (left_col_idx <= 300 && right_col_idx >= 300)) {
-        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(150 / kBlockM)));
+    index_t base_idx = params.glm_mask_batch_stride * bidb;
+    int startpoint;
+    int endpoint;
+    int involved_pair_num = 0;
+    int* involved_startpoints = new int[params.glm_mask_pair_stride];
+    int* involved_endpoints = new int[params.glm_mask_pair_stride];
+    for (index_t idx = params.glm_mask_pair_stride; idx > 0; --idx){
+            startpoint = params.glm_mask_ptr[base_idx + idx - 1];
+            endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx - 1];
+            if ((left_col_idx <= startpoint && right_col_idx >= startpoint) || (left_col_idx <= endpoint && right_col_idx >= endpoint)) {
+                involved_startpoints[involved_pair_num] = startpoint;
+                involved_endpoints[involved_pair_num] = endpoint;
+                involved_pair_num = involved_pair_num + 1;
+                m_block_min = std::min(m_block_min, static_cast<int>(std::floor(startpoint / kBlockM)));
+        }
     }
-    if ((left_col_idx <= 50 && right_col_idx >= 50) || (left_col_idx <= 100 && right_col_idx >= 100)) {
-        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(50 / kBlockM)));
-    }
-    if ((left_col_idx <= 0 && right_col_idx >= 0) || (left_col_idx <= 20 && right_col_idx >= 20)) {
-        m_block_min = std::min(m_block_min, static_cast<int>(std::floor(0 / kBlockM)));
-    }
+
+    // if ((left_col_idx <= 150 && right_col_idx >= 150) || (left_col_idx <= 300 && right_col_idx >= 300)) {
+    //     m_block_min = std::min(m_block_min, static_cast<int>(std::floor(150 / kBlockM)));
+    // }
+    // if ((left_col_idx <= 50 && right_col_idx >= 50) || (left_col_idx <= 100 && right_col_idx >= 100)) {
+    //     m_block_min = std::min(m_block_min, static_cast<int>(std::floor(50 / kBlockM)));
+    // }
+    // if ((left_col_idx <= 0 && right_col_idx >= 0) || (left_col_idx <= 20 && right_col_idx >= 20)) {
+    //     m_block_min = std::min(m_block_min, static_cast<int>(std::floor(0 / kBlockM)));
+    // }
 
 
     // If not local, we're guaranteed that m_block_min <= m_block:
@@ -847,24 +864,22 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
             // But we still want to mask out elements beyond actual_seqlen_k.
             if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k
                 || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
-                int* _tmpArray2;
                 flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                          binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                          binfo.actual_seqlen_q,
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
                                          AtomLayoutMS * 16,
-                                         0, _tmpArray2, _tmpArray2);
+                                         involved_pair_num, involved_startpoints, involved_endpoints);
             }
         } else if (Is_local) {
             if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
                 || (m_block + 1) * kBlockM >= n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left
                 || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
-                int* _tmpArray;
                 flash::apply_mask_local(scores, n_block * kBlockN + (tidx / 32 / AtomLayoutMS) * MMA_N_SdP * 16,
                                         binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                         binfo.actual_seqlen_q, AtomLayoutMS * 16,
                                         params.window_size_left, params.window_size_right,
-                                        0, _tmpArray, _tmpArray);
+                                        involved_pair_num, involved_startpoints, involved_endpoints);
             }
 
         }
