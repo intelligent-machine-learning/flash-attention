@@ -668,16 +668,16 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     index_t base_idx = params.glm_mask_batch_stride * bidb;
     int startpoint;
     int endpoint;
-    int involved_pair_num = 0;
-    int* involved_startpoints = new int[params.glm_mask_pair_stride];
-    int* involved_endpoints = new int[params.glm_mask_pair_stride];
+    // int involved_pair_num = 0;
+    // int* involved_startpoints = new int[params.glm_mask_pair_stride];
+    // int* involved_endpoints = new int[params.glm_mask_pair_stride];
     for (index_t idx = params.glm_mask_pair_stride; idx > 0; --idx){
             startpoint = params.glm_mask_ptr[base_idx + idx - 1];
             endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx - 1];
             if ((left_col_idx <= startpoint && right_col_idx >= startpoint) || (left_col_idx <= endpoint && right_col_idx >= endpoint)) {
-                involved_startpoints[involved_pair_num] = startpoint;
-                involved_endpoints[involved_pair_num] = endpoint;
-                involved_pair_num = involved_pair_num + 1;
+                // involved_startpoints[involved_pair_num] = startpoint;
+                // involved_endpoints[involved_pair_num] = endpoint;
+                // involved_pair_num = involved_pair_num + 1;
                 m_block_min = std::min(m_block_min, static_cast<int>(std::floor(startpoint / kBlockM)));
         }
     }
@@ -869,7 +869,8 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
                                          binfo.actual_seqlen_q,
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
                                          AtomLayoutMS * 16,
-                                         involved_pair_num, involved_startpoints, involved_endpoints);
+                                         params.glm_mask_pair_stride, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb + params.glm_mask_pair_stride);
+                                        //  involved_pair_num, involved_startpoints, involved_endpoints);
             }
         } else if (Is_local) {
             if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
@@ -879,7 +880,8 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
                                         binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                         binfo.actual_seqlen_q, AtomLayoutMS * 16,
                                         params.window_size_left, params.window_size_right,
-                                        involved_pair_num, involved_startpoints, involved_endpoints);
+                                        params.glm_mask_pair_stride, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb + params.glm_mask_pair_stride);
+                                        // involved_pair_num, involved_startpoints, involved_endpoints);
             }
 
         }

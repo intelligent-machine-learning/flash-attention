@@ -99,9 +99,9 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
     int down_row_idx = (m_block + 1) * kBlockM;
     int _n_block_max;
     int delta_block_cnt = 0;
-    int involved_pair_num = 0;
-    int* involved_startpoints = new int[params.glm_mask_pair_stride];
-    int* involved_endpoints = new int[params.glm_mask_pair_stride];
+    // int involved_pair_num = 0;
+    // int* involved_startpoints = new int[params.glm_mask_pair_stride];
+    // int* involved_endpoints = new int[params.glm_mask_pair_stride];
     if (Is_causal || Is_local) {
         n_block_max = std::min(n_block_max,
                                cute::ceil_div((m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right, kBlockN));
@@ -116,9 +116,9 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
             startpoint = params.glm_mask_ptr[base_idx + idx];
             endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx];
             if ((up_row_idx <= startpoint && down_row_idx >= startpoint) || (up_row_idx <= endpoint && down_row_idx >= endpoint)) {
-                involved_startpoints[involved_pair_num] = startpoint;
-                involved_endpoints[involved_pair_num] = endpoint;
-                involved_pair_num = involved_pair_num + 1;
+                // involved_startpoints[involved_pair_num] = startpoint;
+                // involved_endpoints[involved_pair_num] = endpoint;
+                // involved_pair_num = involved_pair_num + 1;
                 _n_block_max = std::max(n_block_max, cute::ceil_div(endpoint, kBlockN));
                 delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
             }
@@ -421,7 +421,8 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
                 m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                 binfo.actual_seqlen_q, kNWarps * 16,
                 params.window_size_left, params.window_size_right,
-                involved_pair_num, involved_startpoints, involved_endpoints
+                params.glm_mask_pair_stride, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb, params.glm_mask_ptr + params.glm_mask_batch_stride * bidb + params.glm_mask_pair_stride
+                // involved_pair_num, involved_startpoints, involved_endpoints
                 // m_block * kBlockM + (tidx / 32) * 16, kNWarps * 16
                 // m_block * kBlockM + (tidx / 32) * (kBlockM / kNWarps), 16
             );
