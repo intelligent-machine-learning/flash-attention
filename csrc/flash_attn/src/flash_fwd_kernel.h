@@ -508,13 +508,12 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
         // Reshape acc_s from (MMA=4, MMA_M, MMA_N) to (nrow=(2, MMA_M), ncol=(2, MMA_N))
         Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
         if (Is_local && n_block * kBlockN < (m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right) {
-            int* _tmpArray3;
             flash::apply_mask_local(
                 scores, n_block * kBlockN, binfo.actual_seqlen_k,
                 m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                 binfo.actual_seqlen_q, kNWarps * 16,
                 params.window_size_left, params.window_size_right,
-                0, _tmpArray3, _tmpArray3
+                0, nullptr, nullptr
             );
         }
         softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(scores, scores_max, scores_sum, acc_o, params.scale_softmax_log2);
@@ -991,13 +990,12 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, cons
         if (!Is_causal && !Is_local) {
             if (!Is_even_MN) { flash::apply_mask(scores, binfo.actual_seqlen_k - n_block * kBlockN); }
         } else {
-            int* _tmpArray;
             flash::apply_mask_local(scores, n_block * kBlockN, binfo.actual_seqlen_k,
                                     m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                                     binfo.actual_seqlen_q, kNWarps * 16,
                                     params.window_size_left, params.window_size_right,
                                     // TODO testing
-                                    0, _tmpArray, _tmpArray
+                                    0, nullptr, nullptr
                                     );
         }
 
@@ -1067,13 +1065,12 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, cons
         // Reshape acc_s from (MMA=4, MMA_M, MMA_N) to (nrow=(2, MMA_M), ncol=(2, MMA_N))
         Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
         if (Is_local && n_block * kBlockN < (m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right) {
-            int* _tmpArray2;
             flash::apply_mask_local(
                 scores, n_block * kBlockN, binfo.actual_seqlen_k,
                 m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                 binfo.actual_seqlen_q, kNWarps * 16,
                 params.window_size_left, params.window_size_right,
-                0, _tmpArray2, _tmpArray2
+                0, nullptr, nullptr
             );
         }
         softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(scores, scores_max, scores_sum, acc_o, params.scale_softmax_log2);

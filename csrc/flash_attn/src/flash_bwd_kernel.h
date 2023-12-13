@@ -1428,7 +1428,8 @@ inline __device__ void compute_dq_dk_dv_1rowblock(const Params &params, const in
                                      binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                      // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
                                      binfo.actual_seqlen_q,
-                                     AtomLayoutMS * 16);
+                                     AtomLayoutMS * 16,
+                                     0, nullptr, nullptr);
         }
         // Compute the exponential value.
         flash::scale_apply_exp2</*scale_max=*/false>(scores, lse, params.scale_softmax_log2);
