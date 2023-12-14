@@ -1261,8 +1261,8 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
 
     auto softmax_lse = torch::empty({batch_size, num_heads, seqlen_q}, opts.dtype(at::kFloat));
 
-    // TODO testing
-    auto _empty = torch::empty({1,1,1});
+    // empty glm mask, -1 mean no valid
+    at::Tensor glm_mask = -torch::ones({batch_size, 2, 1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
     Flash_fwd_params params;
     set_params_fprop(params,
                      batch_size,
@@ -1280,7 +1280,7 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
                      softmax_scale,
                      window_size_left,
                      window_size_right,
-                     /*glm_mask=*/_empty);
+                     glm_mask);
 
     at::Tensor k, v, k_padded, v_padded;
     if (k_.has_value()) {

@@ -144,7 +144,7 @@ __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_i
                                         const int max_seqlen_k, const int row_idx_offset_,
                                         const int max_seqlen_q, const int warp_row_stride,
                                         const int window_size_left, const int window_size_right,
-                                        int involved_pair_num, int* involved_startpoints, int* involved_endpoints) {
+                                        int pair_num, int* startpoints, int* endpoints) {
     // tensor has shape (ncol=(2, MMA_M), nrow=(2, MMA_N))
     static_assert(Layout::rank == 2, "Only support 2D Tensor");
     const int lane_id = threadIdx.x % 32;
@@ -159,20 +159,11 @@ __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_i
             const int row_idx = row_idx_base + i * 8;
             const int col_idx_limit_left = std::max(0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left);
             int col_idx_limit_right = std::min(max_seqlen_k, row_idx + 1 + max_seqlen_k - max_seqlen_q + window_size_right);
-            for (int idx = 0; idx < involved_pair_num; ++idx){
-                if (row_idx >= involved_startpoints[idx] && row_idx < involved_endpoints[idx]) {
-                    col_idx_limit_right = std::max(col_idx_limit_right, involved_endpoints[idx]);
+            for (int idx = 0; idx < pair_num; ++idx){
+                if (row_idx >= startpoints[idx] && row_idx < endpoints[idx]) {
+                    col_idx_limit_right = std::max(col_idx_limit_right, endpoints[idx]);
                 }
             }
-            // if (row_idx >= 0 && row_idx < 20) {
-            //     col_idx_limit_right = std::max(col_idx_limit_right, 20);
-            // }
-            // if (row_idx >= 50 && row_idx < 100) {
-            //     col_idx_limit_right = std::max(col_idx_limit_right, 100);
-            // }
-            // if (row_idx >= 150 && row_idx < 300) {
-            //     col_idx_limit_right = std::max(col_idx_limit_right, 300);
-            // }
             #pragma unroll
             for (int nj = 0; nj < size<1, 1>(tensor); ++nj) {
                 const int col_idx_base = col_idx_offset + nj * 8;
@@ -197,10 +188,10 @@ template <typename Engine, typename Layout>
 __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
                                          const int max_seqlen_k, const int row_idx_offset_,
                                          const int max_seqlen_q, const int warp_row_stride,
-                                         int involved_pair_num, int* involved_startpoints, int* involved_endpoints) {
+                                         int pair_num, int* startpoints, int* endpoints) {
     // Causal masking is equivalent to local masking with window_size_left = infinity and window_size_right = 0
     apply_mask_local</*HasWSLeft=*/false>(tensor, col_idx_offset_, max_seqlen_k, row_idx_offset_,
-                                          max_seqlen_q, warp_row_stride, -1, 0, involved_pair_num, involved_startpoints, involved_endpoints);
+                                          max_seqlen_q, warp_row_stride, -1, 0, pair_num, startpoints, endpoints);
 }
 
 template <typename Engine0, typename Layout0, typename Engine1, typename Layout1>
