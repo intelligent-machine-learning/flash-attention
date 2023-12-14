@@ -26,10 +26,10 @@ with freeze_rng_state():
         qkv, 0.0, return_attn_probs=True, causal=True,
         glm_mask=torch.tensor(
             [
-                [[0, 50, 150], [20, 100, 300]],
-                [[0, 50, 150], [20, 100, 300]],
-                [[0, 50, 150], [20, 100, 300]],
-                [[0, 50, 150], [20, 100, 300]],
+                [[0], [350]],
+                [[0], [350]],
+                [[0], [350]],
+                [[0], [350]],
             ]
         ).to(torch.int32).to(device)
     )
@@ -70,7 +70,8 @@ def mock_mask(device):
         m = m.squeeze(0)
         return m
     attention_mask_list = []
-    for len_data, len_input in [(50, 20), (150 - 50, 100 - 50), (seqlen - 150, 300 - 150)]:
+    # for len_data, len_input in [(50, 20), (150 - 50, 100 - 50), (seqlen - 150, 300 - 150)]:
+    for len_data, len_input in [(seqlen, 350),]:
         attention_mask = build_mask_matrix(len_data, len_input)
         attention_mask_list.append(attention_mask)
     total_len = 0
