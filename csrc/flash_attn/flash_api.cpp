@@ -268,7 +268,8 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x head_size
         int window_size_right,
         const bool return_softmax,
         c10::optional<at::Generator> gen_,
-        const at::Tensor &glm_mask) {
+        const c10::optional<at::Tensor> &glm_mask_ // [batch_size] or [batch_size, 2, MAX_NUM_PAIR]
+        ) {
 
     auto dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
@@ -363,6 +364,24 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x head_size
     if (return_softmax) {
         TORCH_CHECK(p_dropout > 0.0f, "return_softmax is only supported when p_dropout > 0.0");
         p = torch::empty({ batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded }, opts);
+    }
+
+    // glm_mask/pack_glm_mask support
+    at::Tensor glm_mask;
+    if (glm_mask_.has_value()) {
+        glm_mask = glm_mask_.value();
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.is_cuda(), "Input tensor must be on CUDA device");
+        if (glm_mask.sizes() == torch::IntArrayRef({batch_size})) {
+            // [batch_size] -> [batch_size, 2, 1(MAX_NUM_PAIR)]
+            glm_mask = glm_mask.reshape({batch_size, 1, 1});
+            glm_mask = torch::nn::functional::pad(glm_mask, torch::nn::functional::PadFuncOptions({0, 0, 1, 0}));
+        }
+        TORCH_CHECK(glm_mask.is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask, batch_size, 2, glm_mask.size(-1));
+    } else {
+        glm_mask = -torch::ones({batch_size, 2, 1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
     }
 
     Flash_fwd_params params;
@@ -461,7 +480,8 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                int window_size_right,
                const bool return_softmax,
                c10::optional<at::Generator> gen_,
-               const at::Tensor &glm_mask) {
+               const c10::optional<at::Tensor> &glm_mask_ // [batch_size] or [batch_size, 2, MAX_NUM_PAIR]
+               ) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -567,6 +587,24 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
         if (return_softmax) {p.zero_();}
     }
 
+    // glm_mask/pack_glm_mask support
+    at::Tensor glm_mask;
+    if (glm_mask_.has_value()) {
+        glm_mask = glm_mask_.value();
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.is_cuda(), "Input tensor must be on CUDA device");
+        if (glm_mask.sizes() == torch::IntArrayRef({batch_size})) {
+            // [batch_size] -> [batch_size, 2, 1(MAX_NUM_PAIR)]
+            glm_mask = glm_mask.reshape({batch_size, 1, 1});
+            glm_mask = torch::nn::functional::pad(glm_mask, torch::nn::functional::PadFuncOptions({0, 0, 1, 0}));
+        }
+        TORCH_CHECK(glm_mask.is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask, batch_size, 2, glm_mask.size(-1));
+    } else {
+        glm_mask = -torch::ones({batch_size, 2, 1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
+    }
+
     Flash_fwd_params params;
     set_params_fprop(params,
                      batch_size,
@@ -653,7 +691,8 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
         int window_size_right,
         c10::optional<at::Generator> gen_,
         c10::optional<at::Tensor> &rng_state,
-        const at::Tensor &glm_mask) {
+        const c10::optional<at::Tensor> &glm_mask_ // [batch_size] or [batch_size, 2, MAX_NUM_PAIR]
+        ) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -752,6 +791,24 @@ mha_bwd(const at::Tensor &dout,  // batch_size x seqlen_q x num_heads, x head_si
         dout_padded = torch::nn::functional::pad(dout, torch::nn::functional::PadFuncOptions({0, 8 - head_size_og % 8}));
     } else {
         dout_padded = dout;
+    }
+
+    // glm_mask/pack_glm_mask support
+    at::Tensor glm_mask;
+    if (glm_mask_.has_value()) {
+        glm_mask = glm_mask_.value();
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.is_cuda(), "Input tensor must be on CUDA device");
+        if (glm_mask.sizes() == torch::IntArrayRef({batch_size})) {
+            // [batch_size] -> [batch_size, 2, 1(MAX_NUM_PAIR)]
+            glm_mask = glm_mask.reshape({batch_size, 1, 1});
+            glm_mask = torch::nn::functional::pad(glm_mask, torch::nn::functional::PadFuncOptions({0, 0, 1, 0}));
+        }
+        TORCH_CHECK(glm_mask.is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask, batch_size, 2, glm_mask.size(-1));
+    } else {
+        glm_mask = -torch::ones({batch_size, 2, 1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
     }
 
     // bool loop = seqlen_k > blocksize_c;
@@ -871,7 +928,8 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                int window_size_right,
                c10::optional<at::Generator> gen_,
                c10::optional<at::Tensor> &rng_state,
-               const at::Tensor &glm_mask) {
+               const c10::optional<at::Tensor> &glm_mask_ // [batch_size] or [batch_size, 2, MAX_NUM_PAIR]
+               ) {
 
     if (is_causal) { window_size_right = 0; }
     auto dprops = at::cuda::getCurrentDeviceProperties();
@@ -1015,6 +1073,24 @@ mha_varlen_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
         dk_expanded.zero_();
         dv_expanded.zero_();
         softmax_d.zero_();
+    }
+
+    // glm_mask/pack_glm_mask support
+    at::Tensor glm_mask;
+    if (glm_mask_.has_value()) {
+        glm_mask = glm_mask_.value();
+        TORCH_CHECK(is_causal, "is_causal must be true");
+        TORCH_CHECK(glm_mask.dtype() == torch::kInt32, "glm_mask must have dtype int32");
+        TORCH_CHECK(glm_mask.is_cuda(), "Input tensor must be on CUDA device");
+        if (glm_mask.sizes() == torch::IntArrayRef({batch_size})) {
+            // [batch_size] -> [batch_size, 2, 1(MAX_NUM_PAIR)]
+            glm_mask = glm_mask.reshape({batch_size, 1, 1});
+            glm_mask = torch::nn::functional::pad(glm_mask, torch::nn::functional::PadFuncOptions({0, 0, 1, 0}));
+        }
+        TORCH_CHECK(glm_mask.is_contiguous(), "glm_mask must be contiguous");
+        CHECK_SHAPE(glm_mask, batch_size, 2, glm_mask.size(-1));
+    } else {
+        glm_mask = -torch::ones({batch_size, 2, 1}, torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
     }
 
     Flash_bwd_params params;

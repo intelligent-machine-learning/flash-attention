@@ -166,7 +166,7 @@ def _flash_attn_varlen_backward(
     causal,
     window_size,
     rng_state=None,
-    glm_mask,
+    glm_mask=None,
 ):
     maybe_contiguous = lambda x: x.contiguous() if x.stride(-1) != 1 else x
     # dq, dk, dv are allocated by us so they should already be contiguous
