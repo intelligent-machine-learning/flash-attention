@@ -22,8 +22,10 @@ dtype=torch.float16
 qkv = torch.randn(batch_size, seqlen, 3, nheads, d, device=device, dtype=dtype,
                   requires_grad=True)
 with freeze_rng_state():
-    out, lse, S_dmask = flash_attn_qkvpacked_func(
-        qkv, 0.0, return_attn_probs=True, causal=True,
+    # out, lse, S_dmask = flash_attn_qkvpacked_func(
+    #     qkv, 0.0, return_attn_probs=True, causal=True,
+    out, lse, S_dmask = flash_attn_func(
+        qkv[:,:,0],qkv[:,:,0],qkv[:,:,0], 0.0, return_attn_probs=True, causal=True,
         glm_mask=torch.tensor(
             [
                 [[0], [350]],
