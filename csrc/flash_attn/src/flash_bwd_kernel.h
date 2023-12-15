@@ -662,7 +662,6 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
         ? 0
         : std::max(0, (n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right) / kBlockM);
 
-    // [left_col_idx, right_col_idx)
     int left_col_idx = n_block * kBlockN;
     int right_col_idx = (n_block + 1) * kBlockN;
     index_t base_idx = params.glm_mask_batch_stride * bidb;
@@ -671,7 +670,13 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
     for (index_t idx = params.glm_mask_pair_stride; idx > 0; --idx){
             startpoint = params.glm_mask_ptr[base_idx + idx - 1];
             endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx - 1];
-            if ((left_col_idx <= startpoint && right_col_idx >= startpoint) || (left_col_idx <= endpoint && right_col_idx >= endpoint)) {
+            // if [left_col_idx, right_col_idx) overlaps with [startpoint, endpoint)
+            // left_col_idx <= startpoint && startpoint < right_col_idx
+            // left_col_idx < endpoint && endpoint <= right_col_idx
+            // startpoint < left_col_idx && right_col_idx < endpoint
+            if ((left_col_idx <= startpoint && startpoint < right_col_idx) || 
+                (left_col_idx < endpoint && endpoint <= right_col_idx) || 
+                (startpoint < left_col_idx && right_col_idx < endpoint)) {
                 m_block_min = std::min(m_block_min, static_cast<int>(std::floor(startpoint / kBlockM)));
         }
     }

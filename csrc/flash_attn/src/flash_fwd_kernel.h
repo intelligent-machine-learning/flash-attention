@@ -104,7 +104,6 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
                                cute::ceil_div((m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right, kBlockN));
 
         // (kBlockM, kBlockN, m_block, [0, 50, 150], [20, 100, 300])
-        // [up_row_idx, down_row_idx)
         _n_block_max = n_block_max;
         index_t base_idx = params.glm_mask_batch_stride * bidb;
         int startpoint;
@@ -112,7 +111,13 @@ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, con
         for (index_t idx = 0; idx < params.glm_mask_pair_stride; ++idx){
             startpoint = params.glm_mask_ptr[base_idx + idx];
             endpoint = params.glm_mask_ptr[base_idx + params.glm_mask_pair_stride + idx];
-            if ((up_row_idx <= startpoint && down_row_idx >= startpoint) || (up_row_idx <= endpoint && down_row_idx >= endpoint)) {
+            // if [up_row_idx, down_row_idx) overlaps with [startpoint, endpoint)
+            // up_row_idx <= startpoint && startpoint < down_row_idx
+            // up_row_idx < endpoint && endpoint <= down_row_idx
+            // startpoint < up_row_idx && down_row_idx < endpoint
+            if ((up_row_idx <= startpoint && startpoint < down_row_idx) || 
+                (up_row_idx < endpoint && endpoint <= down_row_idx) || 
+                (startpoint < up_row_idx && down_row_idx < endpoint)) {
                 _n_block_max = std::max(n_block_max, cute::ceil_div(endpoint, kBlockN));
                 delta_block_cnt = std::max(delta_block_cnt, _n_block_max - n_block_max);
             }
