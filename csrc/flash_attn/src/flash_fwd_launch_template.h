@@ -148,7 +148,7 @@ void run_mha_fwd_hdim32(Flash_fwd_params &params, cudaStream_t stream) {
         });
     });
 }
-/*
+
 template<typename T>
 void run_mha_fwd_hdim64(Flash_fwd_params &params, cudaStream_t stream) {
     constexpr static int Headdim = 64;
@@ -342,4 +342,3 @@ void run_mha_fwd_hdim256(Flash_fwd_params &params, cudaStream_t stream) {
         });
     });
 }
-*/

@@ -158,7 +158,7 @@ void run_mha_bwd_hdim32(Flash_bwd_params &params, cudaStream_t stream, const boo
         }
     });
 }
-/*
+
 template<typename T>
 void run_mha_bwd_hdim64(Flash_bwd_params &params, cudaStream_t stream, const bool configure) {
     constexpr static int Headdim = 64;
@@ -341,4 +341,3 @@ void run_mha_bwd_hdim256(Flash_bwd_params &params, cudaStream_t stream, const bo
         }
     });
 }
-*/

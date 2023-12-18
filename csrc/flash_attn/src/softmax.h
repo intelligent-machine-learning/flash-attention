@@ -140,7 +140,7 @@ inline __device__ void apply_mask(Tensor<Engine, Layout> &tensor, const int max_
 }
 
 template <bool HasWSLeft=true, typename Engine, typename Layout>
-__device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
+inline __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
                                         const int max_seqlen_k, const int row_idx_offset_,
                                         const int max_seqlen_q, const int warp_row_stride,
                                         const int window_size_left, const int window_size_right,
@@ -185,7 +185,7 @@ __device__ void apply_mask_local(Tensor<Engine, Layout> &tensor, const int col_i
 }
 
 template <typename Engine, typename Layout>
-__device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
+inline __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const int col_idx_offset_,
                                          const int max_seqlen_k, const int row_idx_offset_,
                                          const int max_seqlen_q, const int warp_row_stride,
                                          int pair_num, int* startpoints, int* endpoints) {
@@ -195,7 +195,7 @@ __device__ void apply_mask_causal(Tensor<Engine, Layout> &tensor, const int col_
 }
 
 template <typename Engine0, typename Layout0, typename Engine1, typename Layout1>
-__device__ void apply_mask_causal_w_idx(
+inline __device__ void apply_mask_causal_w_idx(
     Tensor<Engine0, Layout0> &tensor, Tensor<Engine1, Layout1> const &idx_rowcol,
     const int col_idx_offset_, const int max_seqlen_k, const int row_idx_offset_)
 {
